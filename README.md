@@ -115,7 +115,7 @@ IDs remain stable across re-indexing when path, qualified name, and kind are unc
 ### Install
 
 ```bash
-pip install git+https://github.com/jgravelle/jcodemunch-mcp.git
+pip install jcodemunch-mcp
 ```
 
 Verify:
