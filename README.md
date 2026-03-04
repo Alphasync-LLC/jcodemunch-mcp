@@ -128,19 +128,42 @@ jcodemunch-mcp --help
 
 ## Configure MCP Client
 
+> **PATH note:** MCP clients often run with a limited environment where `jcodemunch-mcp` may not be found even if it works in your terminal. Using [`uvx`](https://github.com/astral-sh/uv) is the recommended approach — it resolves the package on demand without requiring anything to be on your system PATH. If you prefer `pip install`, use the absolute path to the executable instead:
+> - **Linux:** `/home/<username>/.local/bin/jcodemunch-mcp`
+> - **macOS:** `/Users/<username>/.local/bin/jcodemunch-mcp`
+> - **Windows:** `C:\\Users\\<username>\\AppData\\Roaming\\Python\\Python3xx\\Scripts\\jcodemunch-mcp.exe`
+
 ### Claude Desktop / Claude Code
 
-macOS / Linux
-`~/.config/claude/claude_desktop_config.json`
+Config file location:
 
-Windows
-`%APPDATA%\Claude\claude_desktop_config.json`
+| OS      | Path |
+| ------- | ---- |
+| macOS   | `~/Library/Application Support/Claude/claude_desktop_config.json` |
+| Linux   | `~/.config/claude/claude_desktop_config.json` |
+| Windows | `%APPDATA%\Claude\claude_desktop_config.json` |
+
+**Minimal config (no API keys needed):**
 
 ```json
 {
   "mcpServers": {
     "jcodemunch": {
-      "command": "jcodemunch-mcp",
+      "command": "uvx",
+      "args": ["jcodemunch-mcp"]
+    }
+  }
+}
+```
+
+**With optional AI summaries and GitHub auth:**
+
+```json
+{
+  "mcpServers": {
+    "jcodemunch": {
+      "command": "uvx",
+      "args": ["jcodemunch-mcp"],
       "env": {
         "GITHUB_TOKEN": "ghp_...",
         "ANTHROPIC_API_KEY": "sk-ant-..."
@@ -149,6 +172,8 @@ Windows
   }
 }
 ```
+
+After saving the config, **restart Claude Desktop / Claude Code** for the server to appear.
 
 ### Google Antigravity
 
@@ -160,11 +185,8 @@ Windows
 {
   "mcpServers": {
     "jcodemunch": {
-      "command": "jcodemunch-mcp",
-      "env": {
-        "GITHUB_TOKEN": "ghp_...",
-        "ANTHROPIC_API_KEY": "sk-ant-..."
-      }
+      "command": "uvx",
+      "args": ["jcodemunch-mcp"]
     }
   }
 }

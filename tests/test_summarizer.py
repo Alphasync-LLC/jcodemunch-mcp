@@ -214,8 +214,7 @@ def test_openai_summarizer_with_mock_client():
     assert mock_client.post.call_args[0][0] == "http://localhost:11434/v1/chat/completions"
     assert symbols[0].summary == "Multiplies two integers together."
 
-@pytest.mark.asyncio
-async def test_openai_summarizer_timeout_config():
+def test_openai_summarizer_timeout_config():
     """OpenAIBatchSummarizer configures custom timeouts via OPENAI_TIMEOUT."""
     # Test valid float parsing
     with patch.dict("os.environ", {"OPENAI_API_BASE": "http://test", "OPENAI_TIMEOUT": "120.5"}, clear=True):
