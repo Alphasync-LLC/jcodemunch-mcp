@@ -62,6 +62,9 @@ LANGUAGE_EXTENSIONS = {
     ".cs": "csharp",
     ".c": "c",
     ".h": "c",
+    ".pl": "perl",
+    ".pm": "perl",
+    ".t": "perl",
 }
 
 
@@ -387,6 +390,27 @@ C_SPEC = LanguageSpec(
 )
 
 
+# Perl specification
+PERL_SPEC = LanguageSpec(
+    ts_language="perl",
+    symbol_node_types={
+        "subroutine_declaration_statement": "function",
+        "package_statement": "class",
+    },
+    name_fields={
+        "subroutine_declaration_statement": "name",
+        "package_statement": "name",
+    },
+    param_fields={},
+    return_type_fields={},
+    docstring_strategy="preceding_comment",
+    decorator_node_type=None,
+    container_node_types=[],
+    constant_patterns=["use_statement"],
+    type_patterns=[],
+)
+
+
 # Language registry
 LANGUAGE_REGISTRY = {
     "python": PYTHON_SPEC,
@@ -399,4 +423,5 @@ LANGUAGE_REGISTRY = {
     "dart": DART_SPEC,
     "csharp": CSHARP_SPEC,
     "c": C_SPEC,
+    "perl": PERL_SPEC,
 }

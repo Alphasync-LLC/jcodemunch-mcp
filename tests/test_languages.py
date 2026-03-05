@@ -519,3 +519,56 @@ def test_parse_c():
     assert const.kind == "constant"
 
 
+PERL_SOURCE = '''
+package Animal;
+
+use constant MAX_LEGS => 4;
+
+# Create a new Animal
+sub new {
+    my ($class, %args) = @_;
+    return bless {}, $class;
+}
+
+# Get the animal name
+sub get_name {
+    my ($self) = @_;
+    return $self->{name};
+}
+
+package Animal::Dog;
+
+sub bark {
+    my ($self) = @_;
+    return "Woof!";
+}
+
+1;
+'''
+
+
+def test_parse_perl():
+    """Test Perl parsing."""
+    symbols = parse_file(PERL_SOURCE, "animal.pl", "perl")
+
+    # Should have packages (class), subroutines (function), constants
+    animal_pkg = next((s for s in symbols if s.name == "Animal"), None)
+    assert animal_pkg is not None
+    assert animal_pkg.kind == "class"
+
+    new_sub = next((s for s in symbols if s.name == "new"), None)
+    assert new_sub is not None
+    assert new_sub.kind == "function"
+    assert "Create a new Animal" in new_sub.docstring
+
+    get_name_sub = next((s for s in symbols if s.name == "get_name"), None)
+    assert get_name_sub is not None
+    assert get_name_sub.kind == "function"
+
+    bark_sub = next((s for s in symbols if s.name == "bark"), None)
+    assert bark_sub is not None
+    assert bark_sub.kind == "function"
+
+    max_legs = next((s for s in symbols if s.name == "MAX_LEGS"), None)
+    assert max_legs is not None
+    assert max_legs.kind == "constant"
