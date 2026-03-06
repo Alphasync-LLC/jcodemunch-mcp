@@ -211,7 +211,7 @@ async def index_repo(
     use_ai_summaries: bool = True,
     github_token: Optional[str] = None,
     storage_path: Optional[str] = None,
-    incremental: bool = False,
+    incremental: bool = True,
 ) -> dict:
     """Index a GitHub repository.
     

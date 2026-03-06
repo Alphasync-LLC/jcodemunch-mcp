@@ -230,7 +230,7 @@ def index_folder(
     storage_path: Optional[str] = None,
     extra_ignore_patterns: Optional[list[str]] = None,
     follow_symlinks: bool = False,
-    incremental: bool = False,
+    incremental: bool = True,
 ) -> dict:
     """Index a local folder containing source code.
 
