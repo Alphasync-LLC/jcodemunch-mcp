@@ -25,6 +25,14 @@ from .tools.search_text import search_text
 from .tools.get_repo_outline import get_repo_outline
 
 
+def _default_use_ai_summaries() -> bool:
+    """Return the default for use_ai_summaries, respecting JCODEMUNCH_USE_AI_SUMMARIES env var."""
+    val = os.environ.get("JCODEMUNCH_USE_AI_SUMMARIES", "").strip().lower()
+    if val in ("0", "false", "no", "off"):
+        return False
+    return True  # default on
+
+
 # Create server
 server = Server("jcodemunch-mcp")
 
@@ -323,18 +331,23 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
         if name == "index_repo":
             result = await index_repo(
                 url=arguments["url"],
-                use_ai_summaries=arguments.get("use_ai_summaries", True),
+                use_ai_summaries=arguments.get("use_ai_summaries", _default_use_ai_summaries()),
                 storage_path=storage_path,
                 incremental=arguments.get("incremental", True),
             )
         elif name == "index_folder":
-            result = index_folder(
-                path=arguments["path"],
-                use_ai_summaries=arguments.get("use_ai_summaries", True),
-                storage_path=storage_path,
-                extra_ignore_patterns=arguments.get("extra_ignore_patterns"),
-                follow_symlinks=arguments.get("follow_symlinks", False),
-                incremental=arguments.get("incremental", True),
+            import functools
+            _ai = arguments.get("use_ai_summaries", _default_use_ai_summaries())
+            result = await asyncio.to_thread(
+                functools.partial(
+                    index_folder,
+                    path=arguments["path"],
+                    use_ai_summaries=_ai,
+                    storage_path=storage_path,
+                    extra_ignore_patterns=arguments.get("extra_ignore_patterns"),
+                    follow_symlinks=arguments.get("follow_symlinks", False),
+                    incremental=arguments.get("incremental", True),
+                )
             )
         elif name == "list_repos":
             result = list_repos(storage_path=storage_path)
