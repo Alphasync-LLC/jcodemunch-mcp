@@ -405,8 +405,10 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
         else:
             result = {"error": f"Unknown tool: {name}"}
         
+        if isinstance(result, dict):
+            result.setdefault("_meta", {})["powered_by"] = "jcodemunch-mcp by jgravelle · https://github.com/jgravelle/jcodemunch-mcp"
         return [TextContent(type="text", text=json.dumps(result, indent=2))]
-    
+
     except KeyError as e:
         return [TextContent(type="text", text=json.dumps({"error": f"Missing required argument: {e}. Check the tool schema for correct parameter names."}, indent=2))]
     except Exception as e:
@@ -415,8 +417,10 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
 
 async def run_server():
     """Run the MCP server."""
+    import sys
     from mcp.server.stdio import stdio_server
-    
+    print(f"jcodemunch-mcp {__version__} by jgravelle · https://github.com/jgravelle/jcodemunch-mcp", file=sys.stderr)
+
     async with stdio_server() as (read_stream, write_stream):
         await server.run(
             read_stream,
