@@ -218,6 +218,41 @@ def safe_decode(data: bytes, encoding: str = "utf-8") -> str:
     return data.decode(encoding, errors="replace")
 
 
+# --- Extra Ignore Patterns ---
+
+EXTRA_IGNORE_PATTERNS_ENV_VAR = "JCODEMUNCH_EXTRA_IGNORE_PATTERNS"
+
+
+def get_extra_ignore_patterns(call_patterns: Optional[list] = None) -> list:
+    """Return merged extra ignore patterns from env var and per-call list.
+
+    Reads ``JCODEMUNCH_EXTRA_IGNORE_PATTERNS`` (comma-separated string or
+    JSON array), then appends any per-call ``extra_ignore_patterns``.
+
+    Args:
+        call_patterns: Patterns supplied by the caller (per-call override).
+
+    Returns:
+        Combined list of gitignore-style pattern strings. Empty list if none.
+    """
+    import json as _json
+
+    env_val = os.environ.get(EXTRA_IGNORE_PATTERNS_ENV_VAR, "").strip()
+    env_patterns: list = []
+    if env_val:
+        try:
+            parsed = _json.loads(env_val)
+            if isinstance(parsed, list):
+                env_patterns = [str(p) for p in parsed if p]
+        except (_json.JSONDecodeError, ValueError):
+            env_patterns = [p.strip() for p in env_val.split(",") if p.strip()]
+
+    combined = env_patterns[:]
+    if call_patterns:
+        combined.extend(call_patterns)
+    return combined
+
+
 # --- Composite Filters ---
 
 DEFAULT_MAX_FILE_SIZE = 500 * 1024  # 500KB

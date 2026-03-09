@@ -96,6 +96,7 @@ async def test_call_tool_defaults_index_repo_incremental_true():
         use_ai_summaries=True,
         storage_path=None,
         incremental=True,
+        extra_ignore_patterns=None,
     )
 
 

@@ -21,6 +21,7 @@ from ..security import (
     should_exclude_file,
     DEFAULT_MAX_FILE_SIZE,
     get_max_folder_files,
+    get_extra_ignore_patterns,
     SKIP_PATTERNS,
 )
 from ..storage import IndexStore
@@ -173,11 +174,12 @@ def discover_local_files(
     # Load all .gitignore files in the tree (root + all subdirectories)
     gitignore_specs = _load_all_gitignores(root)
 
-    # Build extra ignore spec if provided
+    # Merge env-var global patterns with per-call patterns, then build spec
+    effective_extra = get_extra_ignore_patterns(extra_ignore_patterns)
     extra_spec = None
-    if extra_ignore_patterns:
+    if effective_extra:
         try:
-            extra_spec = pathspec.PathSpec.from_lines("gitignore", extra_ignore_patterns)
+            extra_spec = pathspec.PathSpec.from_lines("gitignore", effective_extra)
         except Exception:
             pass
 

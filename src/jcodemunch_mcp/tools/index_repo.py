@@ -13,7 +13,7 @@ import httpx
 logger = logging.getLogger(__name__)
 
 from ..parser import parse_file, LANGUAGE_EXTENSIONS, get_language_for_path
-from ..security import is_secret_file, is_binary_extension, get_max_index_files, SKIP_PATTERNS
+from ..security import is_secret_file, is_binary_extension, get_max_index_files, get_extra_ignore_patterns, SKIP_PATTERNS
 from ..storage import IndexStore
 from ..summarizer import summarize_symbols, generate_file_summaries
 
@@ -85,7 +85,8 @@ def discover_source_files(
     tree_entries: list[dict],
     gitignore_content: Optional[str] = None,
     max_files: Optional[int] = None,
-    max_size: int = 500 * 1024  # 500KB
+    max_size: int = 500 * 1024,  # 500KB
+    extra_ignore_patterns: Optional[list] = None,
 ) -> tuple[list[str], bool]:
     """Discover source files from tree entries.
     
@@ -100,7 +101,7 @@ def discover_source_files(
     import pathspec
 
     max_files = get_max_index_files(max_files)
-    
+
     # Parse gitignore if provided
     gitignore_spec = None
     if gitignore_content:
@@ -111,17 +112,26 @@ def discover_source_files(
             )
         except Exception:
             pass
-    
+
+    # Merge env-var global patterns with per-call patterns
+    effective_extra = get_extra_ignore_patterns(extra_ignore_patterns)
+    extra_spec = None
+    if effective_extra:
+        try:
+            extra_spec = pathspec.PathSpec.from_lines("gitignore", effective_extra)
+        except Exception:
+            pass
+
     files = []
-    
+
     for entry in tree_entries:
         # Type filter - only blobs (files)
         if entry.get("type") != "blob":
             continue
-        
+
         path = entry.get("path", "")
         size = entry.get("size", 0)
-        
+
         # Extension filter
         _, ext = os.path.splitext(path)
         if get_language_for_path(path) is None:
@@ -138,15 +148,19 @@ def discover_source_files(
         # Binary extension check
         if is_binary_extension(path):
             continue
-        
+
         # Size limit
         if size > max_size:
             continue
-        
+
         # Gitignore matching
         if gitignore_spec and gitignore_spec.match_file(path):
             continue
-        
+
+        # Extra ignore patterns (env-var + per-call)
+        if extra_spec and extra_spec.match_file(path):
+            continue
+
         files.append(path)
     
     truncated = len(files) > max_files
@@ -240,6 +254,7 @@ async def index_repo(
     github_token: Optional[str] = None,
     storage_path: Optional[str] = None,
     incremental: bool = True,
+    extra_ignore_patterns: Optional[list] = None,
 ) -> dict:
     """Index a GitHub repository.
     
@@ -286,6 +301,7 @@ async def index_repo(
             tree_entries,
             gitignore_content,
             max_files=max_files,
+            extra_ignore_patterns=extra_ignore_patterns,
         )
         
         logger.info("index_repo discovery — %d source files (truncated=%s)", len(source_files), truncated)

@@ -23,6 +23,8 @@ from jcodemunch_mcp.security import (
     DEFAULT_MAX_FOLDER_FILES,
     MAX_FOLDER_FILES_ENV_VAR,
     get_max_folder_files,
+    EXTRA_IGNORE_PATTERNS_ENV_VAR,
+    get_extra_ignore_patterns,
 )
 
 
@@ -280,6 +282,60 @@ class TestMaxFolderFilesConfig:
     def test_non_positive_explicit_value_is_rejected(self):
         with pytest.raises(ValueError, match="positive integer"):
             get_max_folder_files(0)
+
+
+# --- Extra Ignore Patterns (JCODEMUNCH_EXTRA_IGNORE_PATTERNS) ---
+
+class TestGetExtraIgnorePatterns:
+    def test_no_env_no_call_returns_empty(self):
+        with patch.dict(os.environ, {}, clear=True):
+            assert get_extra_ignore_patterns() == []
+
+    def test_call_patterns_only(self):
+        with patch.dict(os.environ, {}, clear=True):
+            result = get_extra_ignore_patterns(["*.log", "tmp/"])
+            assert result == ["*.log", "tmp/"]
+
+    def test_env_comma_separated(self):
+        env = {EXTRA_IGNORE_PATTERNS_ENV_VAR: "**/scrapes/**, **/images/**"}
+        with patch.dict(os.environ, env, clear=True):
+            result = get_extra_ignore_patterns()
+            assert "**/scrapes/**" in result
+            assert "**/images/**" in result
+
+    def test_env_json_array(self):
+        import json
+        patterns = ["**/scrapes/**", "*.png"]
+        env = {EXTRA_IGNORE_PATTERNS_ENV_VAR: json.dumps(patterns)}
+        with patch.dict(os.environ, env, clear=True):
+            result = get_extra_ignore_patterns()
+            assert result == patterns
+
+    def test_env_and_call_are_merged(self):
+        env = {EXTRA_IGNORE_PATTERNS_ENV_VAR: "global/"}
+        with patch.dict(os.environ, env, clear=True):
+            result = get_extra_ignore_patterns(["local/"])
+            assert "global/" in result
+            assert "local/" in result
+
+    def test_env_patterns_come_first(self):
+        env = {EXTRA_IGNORE_PATTERNS_ENV_VAR: "first/"}
+        with patch.dict(os.environ, env, clear=True):
+            result = get_extra_ignore_patterns(["second/"])
+            assert result.index("first/") < result.index("second/")
+
+    def test_empty_env_string_returns_call_only(self):
+        env = {EXTRA_IGNORE_PATTERNS_ENV_VAR: ""}
+        with patch.dict(os.environ, env, clear=True):
+            result = get_extra_ignore_patterns(["only/"])
+            assert result == ["only/"]
+
+    def test_invalid_json_falls_back_to_comma_split(self):
+        env = {EXTRA_IGNORE_PATTERNS_ENV_VAR: "a/, b/"}
+        with patch.dict(os.environ, env, clear=True):
+            result = get_extra_ignore_patterns()
+            assert "a/" in result
+            assert "b/" in result
 
 
 # --- Integration: discover_local_files with security ---

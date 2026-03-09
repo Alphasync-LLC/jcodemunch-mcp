@@ -60,6 +60,11 @@ async def list_tools() -> list[Tool]:
                         "description": "Use AI to generate symbol summaries (requires ANTHROPIC_API_KEY or GOOGLE_API_KEY). Anthropic takes priority if both are set. When false, uses docstrings or signature fallback.",
                         "default": True
                     },
+                    "extra_ignore_patterns": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Additional gitignore-style patterns to exclude from indexing (merged with JCODEMUNCH_EXTRA_IGNORE_PATTERNS env var)"
+                    },
                     "incremental": {
                         "type": "boolean",
                         "description": "When true and an existing index exists, only re-index changed files.",
@@ -87,7 +92,7 @@ async def list_tools() -> list[Tool]:
                     "extra_ignore_patterns": {
                         "type": "array",
                         "items": {"type": "string"},
-                        "description": "Additional gitignore-style patterns to exclude from indexing"
+                        "description": "Additional gitignore-style patterns to exclude from indexing (merged with JCODEMUNCH_EXTRA_IGNORE_PATTERNS env var)"
                     },
                     "follow_symlinks": {
                         "type": "boolean",
@@ -339,6 +344,7 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
                 use_ai_summaries=arguments.get("use_ai_summaries", _default_use_ai_summaries()),
                 storage_path=storage_path,
                 incremental=arguments.get("incremental", True),
+                extra_ignore_patterns=arguments.get("extra_ignore_patterns"),
             )
         elif name == "index_folder":
             _ai = arguments.get("use_ai_summaries", _default_use_ai_summaries())
