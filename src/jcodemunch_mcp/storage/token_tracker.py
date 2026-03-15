@@ -105,7 +105,7 @@ class _State:
             self._anon_id = data["anon_id"]
         else:
             data["anon_id"] = self._anon_id
-        data["total_tokens_saved"] = self._total
+        data["total_tokens_saved"] = data.get("total_tokens_saved", 0) + self._unflushed
         try:
             path.write_text(json.dumps(data))
         except Exception:
