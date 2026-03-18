@@ -40,6 +40,13 @@ from .tools.get_context_bundle import get_context_bundle
 from .parser.symbols import VALID_KINDS
 
 
+try:
+    from .watcher import watch_folders, WatcherError
+except ImportError:
+    watch_folders = None  # type: ignore[assignment, misc]
+    WatcherError = type("WatcherError", (Exception,), {})  # type: ignore[assignment, misc]
+
+
 logger = logging.getLogger(__name__)
 
 
@@ -49,6 +56,32 @@ def _default_use_ai_summaries() -> bool:
     if val in ("0", "false", "no", "off"):
         return False
     return True  # default on
+
+
+def _parse_watcher_flag(value: Optional[str]) -> bool:
+    """Parse the --watcher flag value.
+
+    None = not provided (disabled).
+    'true'/'1'/'yes' = enabled (const from nargs='?').
+    'false'/'0'/'no' = explicitly disabled.
+    """
+    if value is None:
+        return False
+    return value.lower() not in ("0", "no", "false")
+
+
+def _get_watcher_enabled(args) -> bool:
+    """Determine if the watcher should be enabled for the serve subcommand.
+
+    Precedence: --watcher CLI flag > JCODEMUNCH_WATCH env var > disabled.
+    """
+    flag = getattr(args, "watcher", None)
+    if flag is not None:
+        return _parse_watcher_flag(flag)
+    env_val = os.environ.get("JCODEMUNCH_WATCH", "")
+    if env_val:
+        return _parse_watcher_flag(env_val)
+    return False
 
 
 # Create server
@@ -858,6 +891,70 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
         return [TextContent(type="text", text=json.dumps({"error": str(e)}, indent=2))]
 
 
+async def _run_server_with_watcher(
+    server_coro_func,
+    server_args: tuple,
+    watcher_kwargs: dict,
+    log_path: Optional[str] = None,
+) -> None:
+    """Run MCP server with a background watcher in the same event loop.
+
+    Watcher runs in quiet mode (no stderr output). If log_path is provided,
+    watcher output and errors go to that file. If log_path is "auto", a temp
+    file is created in the system temp directory.
+    """
+    if watch_folders is None:
+        raise ImportError(
+            "watchfiles is required for --watcher. "
+            "Install with: pip install 'jcodemunch-mcp[watch]'"
+        )
+
+    import sys
+    import tempfile
+
+    # Resolve log file path
+    if log_path == "auto":
+        log_path = os.path.join(
+            tempfile.gettempdir(),
+            f"jcw_{os.getpid()}.log",
+        )
+
+    stop_event = asyncio.Event()
+    watcher_task = asyncio.create_task(
+        watch_folders(
+            **watcher_kwargs,
+            stop_event=stop_event,
+            quiet=True,
+            log_file=log_path,
+        ),
+        name="embedded-watcher",
+    )
+
+    # Give watcher a moment to start; detect early failures before blocking on server
+    await asyncio.sleep(0.1)
+    if watcher_task.done() and not watcher_task.cancelled():
+        exc = watcher_task.exception()
+        if exc is not None:
+            logger.warning("Embedded watcher failed to start: %s", exc)
+
+    try:
+        await server_coro_func(*server_args)
+    except asyncio.CancelledError:
+        pass  # Clean shutdown via Ctrl+C
+    finally:
+        stop_event.set()
+        try:
+            await asyncio.wait_for(watcher_task, timeout=5.0)
+        except (asyncio.TimeoutError, asyncio.CancelledError):
+            watcher_task.cancel()
+            try:
+                await watcher_task
+            except asyncio.CancelledError:
+                pass
+        except (WatcherError, Exception) as exc:
+            logger.warning("Watcher stopped with error: %s", exc)
+
+
 async def run_stdio_server():
     """Run the MCP server over stdio (default)."""
     import sys
@@ -1081,6 +1178,61 @@ def main(argv: Optional[list[str]] = None):
     )
     _add_common_args(serve_parser)
 
+    # --- Watcher options for serve ---
+    serve_parser.add_argument(
+        "--watcher",
+        nargs="?",
+        const="true",
+        default=None,
+        metavar="BOOL",
+        help="Enable background file watcher alongside the server. "
+             "Use --watcher or --watcher=true to enable, --watcher=false to disable.",
+    )
+    serve_parser.add_argument(
+        "--watcher-path",
+        nargs="*",
+        default=None,
+        metavar="PATH",
+        help="Folder(s) to watch (default: current working directory)",
+    )
+    serve_parser.add_argument(
+        "--watcher-debounce",
+        type=int,
+        default=int(os.environ.get("JCODEMUNCH_WATCH_DEBOUNCE_MS", "2000")),
+        help="Watcher debounce interval in ms (default: 2000, also via JCODEMUNCH_WATCH_DEBOUNCE_MS)",
+    )
+    serve_parser.add_argument(
+        "--watcher-idle-timeout",
+        type=int,
+        default=None,
+        metavar="MINUTES",
+        help="Auto-stop watcher after N minutes with no re-indexing (default: disabled)",
+    )
+    serve_parser.add_argument(
+        "--watcher-no-ai-summaries",
+        action="store_true",
+        help="Disable AI-generated summaries for watcher re-indexing",
+    )
+    serve_parser.add_argument(
+        "--watcher-extra-ignore",
+        nargs="*",
+        help="Additional gitignore-style patterns to exclude from watching",
+    )
+    serve_parser.add_argument(
+        "--watcher-follow-symlinks",
+        action="store_true",
+        help="Include symlinked files in watcher indexing",
+    )
+    serve_parser.add_argument(
+        "--watcher-log",
+        nargs="?",
+        const="auto",
+        default=None,
+        metavar="PATH",
+        help="Log watcher output to file instead of stderr. "
+             "Use --watcher-log for auto temp file, or --watcher-log=<path> for a specific file.",
+    )
+
     # --- watch ---
     watch_parser = subparsers.add_parser(
         "watch",
@@ -1224,12 +1376,55 @@ def main(argv: Optional[list[str]] = None):
         )
     else:
         # serve (default)
-        if args.transport == "sse":
-            asyncio.run(run_sse_server(args.host, args.port))
-        elif args.transport == "streamable-http":
-            asyncio.run(run_streamable_http_server(args.host, args.port))
+        watcher_enabled = _get_watcher_enabled(args)
+
+        if watcher_enabled:
+            try:
+                import watchfiles  # noqa: F401
+            except ImportError:
+                print(
+                    "ERROR: --watcher requires watchfiles. "
+                    "Install with: pip install 'jcodemunch-mcp[watch]'",
+                    file=sys.stderr,
+                )
+                sys.exit(1)
+
+            watcher_paths = args.watcher_path or [os.getcwd()]
+            use_ai = not args.watcher_no_ai_summaries and _default_use_ai_summaries()
+            watcher_kwargs = dict(
+                paths=watcher_paths,
+                debounce_ms=args.watcher_debounce,
+                use_ai_summaries=use_ai,
+                storage_path=os.environ.get("CODE_INDEX_PATH"),
+                extra_ignore_patterns=args.watcher_extra_ignore,
+                follow_symlinks=args.watcher_follow_symlinks,
+                idle_timeout_minutes=args.watcher_idle_timeout,
+            )
+
+            log_path = getattr(args, "watcher_log", None)
+
+            try:
+                if args.transport == "sse":
+                    asyncio.run(_run_server_with_watcher(
+                        run_sse_server, (args.host, args.port), watcher_kwargs, log_path,
+                    ))
+                elif args.transport == "streamable-http":
+                    asyncio.run(_run_server_with_watcher(
+                        run_streamable_http_server, (args.host, args.port), watcher_kwargs, log_path,
+                    ))
+                else:
+                    asyncio.run(_run_server_with_watcher(
+                        run_stdio_server, (), watcher_kwargs, log_path,
+                    ))
+            except KeyboardInterrupt:
+                pass
         else:
-            asyncio.run(run_stdio_server())
+            if args.transport == "sse":
+                asyncio.run(run_sse_server(args.host, args.port))
+            elif args.transport == "streamable-http":
+                asyncio.run(run_streamable_http_server(args.host, args.port))
+            else:
+                asyncio.run(run_stdio_server())
 
 
 if __name__ == "__main__":

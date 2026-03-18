@@ -9,10 +9,11 @@ import re
 import signal
 import subprocess
 import sys
+import tempfile
 import time
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Callable, Optional
+from typing import Callable, IO, Optional
 
 from .hook_event import DEFAULT_MANIFEST_PATH, read_manifest
 from .tools.index_folder import index_folder
@@ -23,6 +24,13 @@ logger = logging.getLogger(__name__)
 # Default debounce in milliseconds
 DEFAULT_DEBOUNCE_MS = 2000
 
+
+class WatcherError(Exception):
+    """Base exception for watcher errors that should not kill the embedding process."""
+
+    pass
+
+
 # Platform-specific: fcntl for Unix (advisory locking)
 try:
     import fcntl
@@ -31,6 +39,14 @@ except ImportError:
 
 # Module-level lock file descriptors (Unix flock)
 _lock_fds: dict[str, int] = {}
+
+
+def _watcher_output(msg: str, *, quiet: bool, log_file_handle: Optional[IO] = None) -> None:
+    """Route watcher output to stderr, a log file, or nowhere."""
+    if log_file_handle is not None:
+        print(msg, file=log_file_handle, flush=True)
+    elif not quiet:
+        print(msg, file=sys.stderr)
 
 
 # ---------------------------------------------------------------------------
@@ -144,14 +160,14 @@ def _acquire_lock(folder_path: str, storage_path: Optional[str]) -> bool:
         data = json.loads(lock_fp.read_text(encoding="utf-8"))
         pid = data.get("pid")
         if pid is None:
-            print(f"Removing stale lock for {folder_path} (no pid key)", file=sys.stderr)
+            logger.info("Removing stale lock for %s (no pid key)", folder_path)
         elif _is_pid_alive(pid):
-            print(f"Watcher already running for {folder_path} (PID {pid})", file=sys.stderr)
+            logger.info("Watcher already running for %s (PID %s)", folder_path, pid)
             return False
         else:
-            print(f"Removing stale lock for {folder_path} (PID {pid} is dead)", file=sys.stderr)
+            logger.info("Removing stale lock for %s (PID %s is dead)", folder_path, pid)
     except (json.JSONDecodeError, OSError):
-        print(f"Removing corrupted lock for {folder_path}", file=sys.stderr)
+        logger.info("Removing corrupted lock for %s", folder_path)
 
     # Step 3: Clean up stale lock and retry
     try:
@@ -181,7 +197,7 @@ def _acquire_lock(folder_path: str, storage_path: Optional[str]) -> bool:
 
     # Step 4: Still can't create - either another process won the race, or
     # the OS is holding the file locked (Windows). Give up gracefully.
-    print(f"WARNING: could not acquire lock for {folder_path}", file=sys.stderr)
+    logger.warning("Could not acquire lock for %s", folder_path)
     return False
 
 
@@ -219,10 +235,7 @@ async def _idle_timeout_watchdog(
             break
         idle_seconds = idle_minutes * 60
         if time.monotonic() - get_last_reindex() > idle_seconds:
-            print(
-                f"No re-indexing activity for {idle_minutes} minute(s) — shutting down.",
-                file=sys.stderr,
-            )
+            logger.info("No re-indexing activity for %s minute(s) — shutting down.", idle_minutes)
             stop_event.set()
             break
 
@@ -239,12 +252,14 @@ async def _watch_single(
     extra_ignore_patterns: Optional[list[str]],
     follow_symlinks: bool,
     on_reindex: Optional[Callable[[], None]] = None,
+    quiet: bool = False,
+    log_file_handle: Optional[IO] = None,
 ) -> None:
     """Watch a single folder and re-index on changes."""
-    print(f"Watching {folder_path} (debounce={debounce_ms}ms)", file=sys.stderr)
+    _watcher_output(f"Watching {folder_path} (debounce={debounce_ms}ms)", quiet=quiet, log_file_handle=log_file_handle)
 
     # Do an initial incremental index to ensure the index is current
-    print(f"  Initial index for {folder_path}...", file=sys.stderr)
+    _watcher_output(f"  Initial index for {folder_path}...", quiet=quiet, log_file_handle=log_file_handle)
     result = await asyncio.to_thread(
         index_folder,
         path=folder_path,
@@ -256,12 +271,12 @@ async def _watch_single(
     )
     if result.get("success"):
         msg = result.get("message", f"{result.get('symbol_count', '?')} symbols")
-        print(f"  Indexed {folder_path}: {msg} ({result.get('duration_seconds', '?')}s)", file=sys.stderr)
+        _watcher_output(f"  Indexed {folder_path}: {msg} ({result.get('duration_seconds', '?')}s)", quiet=quiet, log_file_handle=log_file_handle)
         # Count initial index as activity (only if it actually did work)
         if on_reindex is not None and result.get("message") != "No changes detected":
             on_reindex()
     else:
-        print(f"  WARNING: initial index failed for {folder_path}: {result.get('error')}", file=sys.stderr)
+        _watcher_output(f"  WARNING: initial index failed for {folder_path}: {result.get('error')}", quiet=quiet, log_file_handle=log_file_handle)
 
     try:
         from watchfiles import awatch, Change
@@ -294,10 +309,10 @@ async def _watch_single(
         n_modified = sum(1 for c, _ in relevant if c == Change.modified)
         n_deleted = sum(1 for c, _ in relevant if c == Change.deleted)
 
-        print(
+        _watcher_output(
             f"  Changes detected in {folder_path}: "
             f"+{n_added} ~{n_modified} -{n_deleted}",
-            file=sys.stderr,
+            quiet=quiet, log_file_handle=log_file_handle,
         )
 
         try:
@@ -313,27 +328,27 @@ async def _watch_single(
             if result.get("success"):
                 duration = result.get("duration_seconds", "?")
                 if result.get("message") == "No changes detected":
-                    print(f"  Re-indexed {folder_path}: no indexable changes ({duration}s)", file=sys.stderr)
+                    _watcher_output(f"  Re-indexed {folder_path}: no indexable changes ({duration}s)", quiet=quiet, log_file_handle=log_file_handle)
                 else:
                     changed = result.get("changed", 0)
                     new = result.get("new", 0)
                     deleted = result.get("deleted", 0)
-                    print(
+                    _watcher_output(
                         f"  Re-indexed {folder_path}: "
                         f"changed={changed} new={new} deleted={deleted} ({duration}s)",
-                        file=sys.stderr,
+                        quiet=quiet, log_file_handle=log_file_handle,
                     )
                     # Report re-index activity (only if it actually did work)
                     if on_reindex is not None:
                         on_reindex()
             else:
-                print(
+                _watcher_output(
                     f"  WARNING: re-index failed for {folder_path}: {result.get('error')}",
-                    file=sys.stderr,
+                    quiet=quiet, log_file_handle=log_file_handle,
                 )
         except Exception as e:
             logger.exception("Re-index error for %s: %s", folder_path, e)
-            print(f"  ERROR: re-index failed for {folder_path}: {e}", file=sys.stderr)
+            _watcher_output(f"  ERROR: re-index failed for {folder_path}: {e}", quiet=quiet, log_file_handle=log_file_handle)
 
 
 async def watch_folders(
@@ -344,19 +359,25 @@ async def watch_folders(
     extra_ignore_patterns: Optional[list[str]] = None,
     follow_symlinks: bool = False,
     idle_timeout_minutes: Optional[int] = None,
+    stop_event: Optional[asyncio.Event] = None,
+    quiet: bool = False,
+    log_file: Optional[str] = None,
 ) -> None:
     """Watch multiple folders concurrently."""
     resolved = []
     for p in paths:
         folder = Path(p).expanduser().resolve()
         if not folder.is_dir():
-            print(f"WARNING: skipping {p} — not a directory", file=sys.stderr)
+            _watcher_output(f"WARNING: skipping {p} — not a directory", quiet=quiet, log_file_handle=None)
             continue
         resolved.append(str(folder))
 
     if not resolved:
-        print("ERROR: no valid directories to watch", file=sys.stderr)
-        sys.exit(1)
+        _watcher_output("ERROR: no valid directories to watch", quiet=quiet, log_file_handle=None)
+        if stop_event is not None:
+            # Embedded mode: raise exception instead of killing the server process
+            raise WatcherError("No valid directories to watch")
+        sys.exit(1)  # Standalone mode: exit is acceptable
 
     # --- Acquire locks ---
     locked_folders: list[str] = []
@@ -367,26 +388,68 @@ async def watch_folders(
             resolved.remove(folder)
 
     if not resolved:
-        print("All folders already have active watchers.", file=sys.stderr)
+        _watcher_output("All folders already have active watchers.", quiet=quiet, log_file_handle=None)
         return
 
-    print(f"jcodemunch-mcp watcher: monitoring {len(resolved)} folder(s)", file=sys.stderr)
+    # --- Log file setup ---
+    _this_handlers: list[logging.Handler] = []
+    _watcher_logger = logging.getLogger("jcodemunch_mcp.watcher")
+    _saved_propagate = _watcher_logger.propagate
+    if log_file:
+        _log_path = log_file
+        if _log_path == "auto":
+            _log_path = os.path.join(tempfile.gettempdir(), f"jcw_{os.getpid()}.log")
+        try:
+            _fh = logging.FileHandler(_log_path, encoding="utf-8")
+        except OSError as exc:
+            _watcher_output(
+                f"WARNING: could not open watcher log {_log_path!r}: {exc} — falling back to quiet mode",
+                quiet=False,
+                log_file_handle=None,
+            )
+            log_file = None
+            _nh = logging.NullHandler()
+            _watcher_logger.addHandler(_nh)
+            _this_handlers.append(_nh)
+            _watcher_logger.propagate = False
+            _watcher_output_stream: Optional[IO] = None
+        else:
+            _fh.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s"))
+            _watcher_logger.addHandler(_fh)
+            _this_handlers.append(_fh)
+            _watcher_logger.propagate = False
+            # Use FileHandler's stream for _watcher_output (no separate open)
+            _watcher_output_stream: Optional[IO] = _fh.stream
+    elif quiet:
+        _nh = logging.NullHandler()
+        _watcher_logger.addHandler(_nh)
+        _this_handlers.append(_nh)
+        _watcher_logger.propagate = False
+        _watcher_output_stream: Optional[IO] = None
+    else:
+        _watcher_output_stream: Optional[IO] = None
+
+    _watcher_output(f"jcodemunch-mcp watcher: monitoring {len(resolved)} folder(s)", quiet=quiet, log_file_handle=_watcher_output_stream)
 
     # Handle graceful shutdown
-    stop_event = asyncio.Event()
-    loop = asyncio.get_running_loop()
-    if sys.platform == "win32":
-        # Windows: signal handlers run synchronously outside the event loop.
-        # Using call_soon_threadsafe ensures stop_event.set() is scheduled
-        # safely on the event loop thread rather than called directly.
-        def _handle_signal(sig, frame):
-            loop.call_soon_threadsafe(stop_event.set)
+    _external_stop = stop_event is not None
+    if stop_event is None:
+        stop_event = asyncio.Event()
 
-        signal.signal(signal.SIGINT, _handle_signal)
-        signal.signal(signal.SIGTERM, _handle_signal)
-    else:
-        for sig in (signal.SIGINT, signal.SIGTERM):
-            loop.add_signal_handler(sig, stop_event.set)
+    if not _external_stop:
+        loop = asyncio.get_running_loop()
+        if sys.platform == "win32":
+            # Windows: signal handlers run synchronously outside the event loop.
+            # Using call_soon_threadsafe ensures stop_event.set() is scheduled
+            # safely on the event loop thread rather than called directly.
+            def _handle_signal(sig, frame):
+                loop.call_soon_threadsafe(stop_event.set)
+
+            signal.signal(signal.SIGINT, _handle_signal)
+            signal.signal(signal.SIGTERM, _handle_signal)
+        else:
+            for sig in (signal.SIGINT, signal.SIGTERM):
+                loop.add_signal_handler(sig, stop_event.set)
 
     # Idle timeout tracking
     last_reindex_time = time.monotonic()
@@ -405,6 +468,8 @@ async def watch_folders(
                 extra_ignore_patterns=extra_ignore_patterns,
                 follow_symlinks=follow_symlinks,
                 on_reindex=update_reindex_time,
+                quiet=quiet,
+                log_file_handle=_watcher_output_stream,
             ),
             name=f"watch:{folder}",
         )
@@ -435,30 +500,37 @@ async def watch_folders(
     )
 
     # Clean up
-    print("\nShutting down watchers...", file=sys.stderr)
-    for t in tasks:
-        t.cancel()
-    done_waiter.cancel()
-    stop_waiter.cancel()
-    # Gather all tasks including the waiter tasks to ensure they're fully cleaned up
-    # before returning. This prevents Python 3.14+ "coroutine never awaited" warnings.
-    await asyncio.gather(
-        *tasks, done_waiter, stop_waiter, return_exceptions=True
-    )
-
-    # Release locks
-    for folder in locked_folders:
-        _release_lock(folder, storage_path)
-
-    print("Done.", file=sys.stderr)
+    try:
+        _watcher_output("\nShutting down watchers...", quiet=quiet, log_file_handle=_watcher_output_stream)
+        for t in tasks:
+            t.cancel()
+        done_waiter.cancel()
+        stop_waiter.cancel()
+        # Gather all tasks including the waiter tasks to ensure they're fully cleaned up
+        # before returning. This prevents Python 3.14+ "coroutine never awaited" warnings.
+        await asyncio.gather(
+            *tasks, done_waiter, stop_waiter, return_exceptions=True
+        )
+    finally:
+        # Release locks
+        for folder in locked_folders:
+            _release_lock(folder, storage_path)
+        # Print "Done." before closing handlers (stream is still open)
+        _watcher_output("Done.", quiet=quiet, log_file_handle=_watcher_output_stream if log_file else None)
+        # Clean up only handlers THIS invocation added
+        _wl = logging.getLogger("jcodemunch_mcp.watcher")
+        for h in _this_handlers:
+            h.close()
+            _wl.removeHandler(h)
+        _wl.propagate = _saved_propagate
 
 
 # ---------------------------------------------------------------------------
-# watch-claude helpers
+# worktree helpers
 # ---------------------------------------------------------------------------
 
-# Branch patterns that indicate a Claude Code-created worktree
-_CLAUDE_BRANCH_RE = re.compile(r"^refs/heads/(claude/|worktree-)")
+# Branch patterns that indicate an agent-created worktree
+_WORKTREE_BRANCH_RE = re.compile(r"^refs/heads/(claude/|agent/|worktree-)")
 
 
 def _local_repo_id(folder_path: str) -> str:
@@ -469,9 +541,9 @@ def _local_repo_id(folder_path: str) -> str:
 
 
 def parse_git_worktrees(repo_path: str) -> set[str]:
-    """Run ``git worktree list --porcelain`` and return paths of Claude-created worktrees.
+    """Run ``git worktree list --porcelain`` and return paths of agent-created worktrees.
 
-    Filters to worktrees whose branch matches ``claude/*`` or ``worktree-*``.
+    Filters to worktrees whose branch matches ``agent/*`` or ``worktree-*``.
     Skips the first entry (the main working copy) and prunable entries.
     """
     try:
@@ -497,7 +569,7 @@ def parse_git_worktrees(repo_path: str) -> set[str]:
         if line.startswith("worktree "):
             # Flush previous entry
             if current_path and not is_first:
-                if current_branch and _CLAUDE_BRANCH_RE.match(current_branch) and not is_prunable:
+                if current_branch and _WORKTREE_BRANCH_RE.match(current_branch) and not is_prunable:
                     worktrees.add(current_path)
             current_path = line[len("worktree "):]
             current_branch = None
@@ -510,7 +582,7 @@ def parse_git_worktrees(repo_path: str) -> set[str]:
         elif line == "":
             # Blank line separates entries; flush
             if current_path and not is_first:
-                if current_branch and _CLAUDE_BRANCH_RE.match(current_branch) and not is_prunable:
+                if current_branch and _WORKTREE_BRANCH_RE.match(current_branch) and not is_prunable:
                     worktrees.add(current_path)
             # The very first entry was already processed when we hit the second "worktree" line,
             # but handle the edge case of only one entry
@@ -519,14 +591,14 @@ def parse_git_worktrees(repo_path: str) -> set[str]:
             is_prunable = False
 
     # Flush last entry (no trailing blank line in some git versions)
-    if current_path and current_branch and _CLAUDE_BRANCH_RE.match(current_branch) and not is_prunable:
+    if current_path and current_branch and _WORKTREE_BRANCH_RE.match(current_branch) and not is_prunable:
         worktrees.add(current_path)
 
     return worktrees
 
 
 # ---------------------------------------------------------------------------
-# watch-claude main
+# watch-worktrees main
 # ---------------------------------------------------------------------------
 
 
@@ -539,7 +611,7 @@ async def watch_claude_worktrees(
     extra_ignore_patterns: Optional[list[str]] = None,
     follow_symlinks: bool = False,
 ) -> None:
-    """Watch Claude Code worktrees via JSONL manifest and/or git repo polling."""
+    """Watch agent worktrees via JSONL manifest and/or git repo polling."""
     manifest_path = DEFAULT_MANIFEST_PATH
     use_manifest = manifest_path.is_file() or not repos
     use_repos = bool(repos)
@@ -547,7 +619,7 @@ async def watch_claude_worktrees(
     if not use_manifest and not use_repos:
         print(
             "ERROR: no manifest file found and no --repos specified.\n"
-            "Either install Claude Code hooks (see docs) or pass --repos.",
+            "Either install agent hooks (see docs) or pass --repos.",
             file=sys.stderr,
         )
         sys.exit(1)
@@ -557,15 +629,20 @@ async def watch_claude_worktrees(
         modes.append(f"manifest ({manifest_path})")
     if use_repos:
         modes.append(f"repos ({len(repos)} repo(s), poll every {poll_interval}s)")
-    print(f"jcodemunch-mcp watch-claude: {' + '.join(modes)}", file=sys.stderr)
+    print(f"jcodemunch-mcp watch-worktrees: {' + '.join(modes)}", file=sys.stderr)
 
     # Handle graceful shutdown
     stop_event = asyncio.Event()
     if sys.platform == "win32":
-        signal.signal(signal.SIGINT, lambda s, f: stop_event.set())
-        signal.signal(signal.SIGTERM, lambda s, f: stop_event.set())
+        loop = asyncio.get_running_loop()
+
+        def _handle_signal(sig, frame):
+            loop.call_soon_threadsafe(stop_event.set)
+
+        signal.signal(signal.SIGINT, _handle_signal)
+        signal.signal(signal.SIGTERM, _handle_signal)
     else:
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         for sig in (signal.SIGINT, signal.SIGTERM):
             loop.add_signal_handler(sig, stop_event.set)
 
@@ -738,7 +815,7 @@ async def watch_claude_worktrees(
     )
 
     # Clean up
-    print("\nShutting down watch-claude...", file=sys.stderr)
+    print("\nShutting down watch-worktrees...", file=sys.stderr)
     for t in management_tasks:
         t.cancel()
     for t in active.values():
