@@ -127,3 +127,58 @@ def test_lua_extension_registered():
     from jcodemunch_mcp.parser.languages import LANGUAGE_EXTENSIONS
     assert LANGUAGE_EXTENSIONS.get(".lua") == "lua"
 
+
+# ---------------------------------------------------------------------------
+# JS/TS const extraction
+# ---------------------------------------------------------------------------
+
+_JS_CONST_SOURCE = """\
+const MAX_RETRIES = 3;
+
+export const BASE_URL = "https://api.example.com";
+
+const config = { debug: false };
+
+const onClick = () => console.log("click");
+
+const handler = function() { return 42; };
+"""
+
+_TS_CONST_SOURCE = """\
+const MAX_RETRIES: number = 3;
+
+export const BASE_URL: string = "https://api.example.com";
+
+const config = Object.freeze({ debug: false });
+
+const format = (s: string): string => s.trim();
+"""
+
+
+def test_js_const_declarations_extracted_as_constants():
+    symbols = parse_file(_JS_CONST_SOURCE, "util.js", "javascript")
+    by_name = {s.name: s for s in symbols}
+    # plain and exported consts should be indexed
+    assert "MAX_RETRIES" in by_name
+    assert "BASE_URL" in by_name
+    assert "config" in by_name
+    assert by_name["MAX_RETRIES"].kind == "constant"
+    assert by_name["BASE_URL"].kind == "constant"
+    assert by_name["config"].kind == "constant"
+    # arrow function and function expression consts are NOT constants
+    assert by_name.get("onClick", None) is None or by_name["onClick"].kind == "function"
+    assert by_name.get("handler", None) is None or by_name["handler"].kind == "function"
+
+
+def test_ts_const_declarations_extracted_as_constants():
+    symbols = parse_file(_TS_CONST_SOURCE, "util.ts", "typescript")
+    by_name = {s.name: s for s in symbols}
+    assert "MAX_RETRIES" in by_name
+    assert "BASE_URL" in by_name
+    assert "config" in by_name
+    assert by_name["MAX_RETRIES"].kind == "constant"
+    assert by_name["BASE_URL"].kind == "constant"
+    assert by_name["config"].kind == "constant"
+    # arrow function const is not a constant
+    assert by_name.get("format", None) is None or by_name["format"].kind == "function"
+

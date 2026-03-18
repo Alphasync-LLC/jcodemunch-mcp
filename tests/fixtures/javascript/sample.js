@@ -12,3 +12,12 @@ class UserService {
 function authenticate(token) {
     return token.length > 0;
 }
+
+export const DEFAULT_HEADERS = {
+    "Content-Type": "application/json",
+    "Accept": "application/json",
+};
+
+const API_BASE_URL = "https://api.example.com";
+
+const handleClick = () => console.log("clicked");

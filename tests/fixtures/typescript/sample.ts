@@ -16,3 +16,9 @@ function authenticate(token: string): boolean {
 }
 
 type UserID = number;
+
+export const DEFAULT_CONFIG = Object.freeze({ timeout: 5000, retries: 3 });
+
+const ALLOWED_ORIGINS = ["http://localhost:3000", "https://example.com"];
+
+const formatName = (first: string, last: string): string => `${first} ${last}`;
