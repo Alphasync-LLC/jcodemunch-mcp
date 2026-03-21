@@ -95,11 +95,17 @@ class SQLiteIndexStore:
 
     def _db_path(self, owner: str, name: str) -> Path:
         """Path to the SQLite database file for a repo."""
-        raise NotImplementedError
+        slug = self._repo_slug(owner, name)
+        return self.base_path / f"{slug}.db"
 
     def _connect(self, db_path: Path) -> sqlite3.Connection:
         """Open a connection with WAL pragmas and schema ensured."""
-        raise NotImplementedError
+        conn = sqlite3.connect(str(db_path), isolation_level=None)  # autocommit
+        conn.row_factory = sqlite3.Row
+        for pragma in _PRAGMAS:
+            conn.execute(pragma)
+        conn.executescript(_SCHEMA_SQL)
+        return conn
 
     def checkpoint_and_close(self, owner: str, name: str) -> None:
         """Compact WAL file on graceful shutdown. Call from server shutdown hook."""
@@ -276,11 +282,21 @@ class SQLiteIndexStore:
 
     def _repo_slug(self, owner: str, name: str) -> str:
         """Stable slug for file paths (same as IndexStore._repo_slug)."""
-        raise NotImplementedError
+        safe_owner = self._safe_repo_component(owner, "owner")
+        safe_name = self._safe_repo_component(name, "name")
+        return f"{safe_owner}-{safe_name}"
 
     def _safe_repo_component(self, value: str, field_name: str) -> str:
         """Validate/sanitize owner/name for filesystem paths."""
-        raise NotImplementedError
+        import re
+        if not value:
+            raise ValueError(f"Empty {field_name}")
+        if "/" in value or "\\" in value:
+            raise ValueError(f"Path separator in {field_name}: {value!r}")
+        if value in (".", ".."):
+            raise ValueError(f"Unsafe {field_name}: {value!r}")
+        sanitized = re.sub(r"[^\w\-.]", "-", value)
+        return sanitized
 
     # ── Migration ───────────────────────────────────────────────────
 
