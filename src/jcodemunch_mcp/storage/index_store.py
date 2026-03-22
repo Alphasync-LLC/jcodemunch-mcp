@@ -91,9 +91,21 @@ class CodeIndex:
         # Lazy BM25 cache — populated on first search, invalidated by new CodeIndex
         self._bm25_cache: dict = {}
 
+    # Keys added by BM25 caching — must not leak into API responses
+    _INTERNAL_KEYS = {"_tokens", "_tf", "_dl"}
+
     def get_symbol(self, symbol_id: str) -> Optional[dict]:
-        """Find a symbol by ID (O(1))."""
-        return self._symbol_index.get(symbol_id)
+        """Find a symbol by ID (O(1)).
+
+        Returns a shallow copy with internal BM25 cache keys stripped
+        so callers never see _tokens/_tf/_dl in API responses.
+        """
+        sym = self._symbol_index.get(symbol_id)
+        if sym is None:
+            return None
+        if sym.keys() & self._INTERNAL_KEYS:
+            return {k: v for k, v in sym.items() if k not in self._INTERNAL_KEYS}
+        return sym
 
     def has_source_file(self, file_path: str) -> bool:
         """Check whether a file is present in the index."""

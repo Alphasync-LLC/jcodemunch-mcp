@@ -222,26 +222,27 @@ def search_symbols(
 
     # Narrow candidates using inverted index: only score symbols that
     # contain at least one query term (union of posting lists).
-    # Falls back to full scan when filters (kind/file_pattern/language)
-    # are applied, since the inverted index doesn't track those.
-    use_inverted = not kind and not file_pattern and not language
-    if use_inverted:
-        candidate_indices: set[int] = set()
-        for term in query_terms:
-            posting = inverted.get(term)
-            if posting:
-                candidate_indices.update(posting)
+    # Filters (kind/file_pattern/language) are applied AFTER narrowing.
+    # Falls back to full scan when no posting lists match (e.g. query
+    # terms not in any symbol) to preserve centrality-only results.
+    candidate_indices: set[int] = set()
+    for term in query_terms:
+        posting = inverted.get(term)
+        if posting:
+            candidate_indices.update(posting)
+    if candidate_indices:
         candidates = [index.symbols[i] for i in sorted(candidate_indices)]
     else:
         candidates = index.symbols
+
+    has_filters = bool(kind or file_pattern or language)
 
     effective_limit = max_results if token_budget is None else len(index.symbols)
     heap: list[tuple[float, int, dict]] = []  # (score, candidates_scored, entry)
     candidates_scored = 0
 
     for sym in candidates:
-        # Apply kind/file_pattern/language filters (skipped when using inverted index)
-        if not use_inverted:
+        if has_filters:
             if kind and sym.get("kind") != kind:
                 continue
             if file_pattern and not fnmatch(sym.get("file", ""), file_pattern):
