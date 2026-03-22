@@ -534,6 +534,59 @@ class TestFindImporters:
         assert importers["_meta"]["truncated"] is True
 
 
+    def test_batch_file_paths(self, tmp_path):
+        """find_importers with file_paths returns grouped results."""
+        src = tmp_path / "src"
+        store = tmp_path / "store"
+        _write(src / "utils.js", "export function helper() {}")
+        _write(src / "config.js", "export const CONFIG = {}")
+        _write(src / "app.js", "import { helper } from './utils';\nimport { CONFIG } from './config';")
+
+        result = index_folder(str(src), use_ai_summaries=False, storage_path=str(store))
+        assert result["success"] is True
+
+        batch_result = find_importers(
+            repo=result["repo"],
+            file_paths=["utils.js", "config.js"],
+            storage_path=str(store),
+        )
+        assert "results" in batch_result
+        assert len(batch_result["results"]) == 2
+        paths = [r["file_path"] for r in batch_result["results"]]
+        assert "utils.js" in paths
+        assert "config.js" in paths
+
+    def test_batch_empty_list(self, tmp_path):
+        """Empty file_paths list returns empty results."""
+        src = tmp_path / "src"
+        store = tmp_path / "store"
+        _write(src / "app.js", "console.log('hi')")
+        result = index_folder(str(src), use_ai_summaries=False, storage_path=str(store))
+        assert result["success"] is True
+
+        batch_result = find_importers(repo=result["repo"], file_paths=[], storage_path=str(store))
+        assert batch_result["results"] == []
+
+    def test_singular_file_path_still_works(self, tmp_path):
+        """Existing singular file_path param still works (backward compat)."""
+        src = tmp_path / "src"
+        store = tmp_path / "store"
+        _write(src / "utils.js", "export function helper() {}")
+        _write(src / "app.js", "import { helper } from './utils';")
+
+        result = index_folder(str(src), use_ai_summaries=False, storage_path=str(store))
+        assert result["success"] is True
+
+        singular_result = find_importers(
+            repo=result["repo"],
+            file_path="utils.js",
+            storage_path=str(store),
+        )
+        # Original response shape: flat importers list, not nested results
+        assert "importers" in singular_result
+        assert "results" not in singular_result
+
+
 class TestFindReferences:
     """Integration tests for find_references."""
 

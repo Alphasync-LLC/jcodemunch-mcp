@@ -474,15 +474,16 @@ async def list_tools() -> list[Tool]:
         ),
         Tool(
             name="find_importers",
-            description="Find all files that import from a given file path. Answers 'what uses this file?'. Each result includes has_importers (bool) indicating whether that importer is itself imported — use this to detect transitive dead code chains (an importer with has_importers=false is itself unreachable). For dbt, resolves {{ ref() }} edges; {{ source() }} edges are extracted but not resolvable to files since sources are external. Requires re-indexing with v1.3.0+.",
+            description="Find all files that import from a given file path. Answers 'what uses this file?'. Each result includes has_importers (bool) indicating whether that importer is itself imported — use this to detect transitive dead code chains (an importer with has_importers=false is itself unreachable). For dbt, resolves {{ ref() }} edges; {{ source() }} edges are extracted but not resolvable to files since sources are external. Requires re-indexing with v1.3.0+. Use file_paths for batch queries across multiple files.",
             inputSchema={
                 "type": "object",
                 "properties": {
                     "repo": {"type": "string", "description": "Repository identifier"},
-                    "file_path": {"type": "string", "description": "Target file path within the repo (e.g. 'src/features/intake/IntakeService.js')"},
-                    "max_results": {"type": "integer", "default": 50, "description": "Maximum results"},
+                    "file_path": {"type": "string", "description": "Target file path within the repo (e.g. 'src/features/intake/IntakeService.js'). Use for single-file queries. Cannot be used together with file_paths."},
+                    "file_paths": {"type": "array", "items": {"type": "string"}, "description": "List of target file paths for batch queries. Returns a results array. Cannot be used together with file_path."},
+                    "max_results": {"type": "integer", "default": 50, "description": "Maximum results per file"},
                 },
-                "required": ["repo", "file_path"],
+                "required": ["repo"],
             },
         ),
         Tool(
@@ -839,7 +840,8 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
                 functools.partial(
                     find_importers,
                     repo=arguments["repo"],
-                    file_path=arguments["file_path"],
+                    file_path=arguments.get("file_path"),
+                    file_paths=arguments.get("file_paths"),
                     max_results=arguments.get("max_results", 50),
                     storage_path=storage_path,
                 )
