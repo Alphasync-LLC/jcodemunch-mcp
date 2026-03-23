@@ -16,6 +16,7 @@ from mcp.server import Server
 from mcp.types import Tool, TextContent, Resource
 
 from . import __version__
+from . import config as config_module
 from .tools.index_repo import index_repo
 from .tools.index_folder import index_folder
 from .tools.index_file import index_file
@@ -744,6 +745,12 @@ async def list_tools() -> list[Tool]:
     for tool in tools:
         if isinstance(tool.inputSchema, dict):
             tool.inputSchema.setdefault("properties", {}).update(_SUPPRESS_META_PROP)
+
+    # Filter out disabled tools
+    disabled = config_module.get("disabled_tools", [])
+    if disabled:
+        tools = [t for t in tools if t.name not in disabled]
+
     return tools
 
 

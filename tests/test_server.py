@@ -393,6 +393,49 @@ async def test_suppress_meta_removes_meta_envelope():
 
 
 @pytest.mark.asyncio
+async def test_disabled_tools_removed_from_list_tools(monkeypatch):
+    """Should remove disabled tools from list_tools output."""
+    from jcodemunch_mcp import config as config_module
+
+    # Save and clear existing config
+    orig_config = config_module._GLOBAL_CONFIG.copy()
+    config_module._GLOBAL_CONFIG.clear()
+
+    try:
+        config_module._GLOBAL_CONFIG["disabled_tools"] = ["index_repo", "search_columns"]
+
+        tools = await list_tools()
+        tool_names = [t.name for t in tools]
+
+        assert "index_repo" not in tool_names
+        assert "search_columns" not in tool_names
+        assert "get_file_tree" in tool_names  # Not disabled
+        # Total should be 24 (26 - 2 disabled)
+        assert len(tools) == 24
+    finally:
+        config_module._GLOBAL_CONFIG.clear()
+        config_module._GLOBAL_CONFIG.update(orig_config)
+
+
+@pytest.mark.asyncio
+async def test_disabled_tools_empty_all_tools_present(monkeypatch):
+    """When disabled_tools is empty, all 26 tools are present."""
+    from jcodemunch_mcp import config as config_module
+
+    orig_config = config_module._GLOBAL_CONFIG.copy()
+    config_module._GLOBAL_CONFIG.clear()
+
+    try:
+        config_module._GLOBAL_CONFIG["disabled_tools"] = []
+
+        tools = await list_tools()
+        assert len(tools) == 26
+    finally:
+        config_module._GLOBAL_CONFIG.clear()
+        config_module._GLOBAL_CONFIG.update(orig_config)
+
+
+@pytest.mark.asyncio
 async def test_suppress_meta_false_keeps_meta_envelope():
     """suppress_meta=False (or absent) keeps the _meta envelope."""
     with patch("jcodemunch_mcp.server.list_repos", return_value={"repos": []}):
