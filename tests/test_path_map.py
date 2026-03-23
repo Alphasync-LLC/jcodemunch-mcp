@@ -108,3 +108,9 @@ def test_remap_multiple_pairs_correct_one_matches():
     pairs = [("/home/alice", "/mnt/alice"), ("/home/bob", "/mnt/bob")]
     result = remap("/home/bob/work/file.py", pairs)
     assert result.replace("\\", "/") == "/mnt/bob/work/file.py"
+
+
+def test_remap_does_not_match_across_directory_boundary():
+    pairs = [("/home/user", "/mnt/user")]
+    result = remap("/home/username/file.py", pairs)
+    assert result.replace("\\", "/") == "/home/username/file.py"
