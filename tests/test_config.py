@@ -882,9 +882,9 @@ def test_parse_env_value_list_comma_separated_fallback():
     result = _parse_env_value('["*.log", "*.tmp"]', list)
     assert result == ["*.log", "*.tmp"]
 
-    # Empty string should return None (no tokens)
+    # Empty string should return [] (allows clearing list via env var)
     result = _parse_env_value("", list)
-    assert result is None
+    assert result == []
 
     # Whitespace-only tokens should be stripped
     result = _parse_env_value("*.log,  ,*.tmp", list)

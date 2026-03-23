@@ -1,18 +1,22 @@
 """Centralized JSONC config for jcodemunch-mcp."""
 
+import hashlib
 import json
 import logging
 import os
+import threading
+from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
 logger = logging.getLogger(__name__)
 
-# Global config storage
 _GLOBAL_CONFIG: dict[str, Any] = {}
-_PROJECT_CONFIGS: dict[str, dict[str, Any]] = {}  # repo -> merged config
-_PROJECT_CONFIG_HASHES: dict[str, str] = {}  # repo -> content hash of .jcodemunch.jsonc
-_DEPRECATED_ENV_VARS_LOGGED: set[str] = set()  # Track warned vars
+_PROJECT_CONFIGS: dict[str, dict[str, Any]] = {}
+_PROJECT_CONFIG_HASHES: dict[str, str] = {}
+_DEPRECATED_ENV_VARS_LOGGED: set[str] = set()
+_CONFIG_LOCK = threading.Lock()
+_REPO_PATH_CACHE: dict[str, str] = {}
 
 ENV_VAR_MAPPING = {
     "JCODEMUNCH_USE_AI_SUMMARIES": "use_ai_summaries",
@@ -156,24 +160,35 @@ def _strip_jsonc(text: str) -> str:
             result.append(ch)
             i += 1
     
-    # Post-process: strip trailing commas before } and ]
-    # This handles JSONC's allowance of trailing commas
     output = ''.join(result)
-    # Use a simple state machine to strip trailing commas
     final = []
     j = 0
     m = len(output)
     while j < m:
         ch = output[j]
-        if ch == '"' and (j == 0 or output[j-1] != '\\'):
-            # Find end of string
+        if ch == '"':
+            backslash_count = 0
+            k = j - 1
+            while k >= 0 and output[k] == '\\':
+                backslash_count += 1
+                k -= 1
+            if backslash_count % 2 == 1:
+                final.append(ch)
+                j += 1
+                continue
             final.append(ch)
             j += 1
             while j < m:
                 final.append(output[j])
-                if output[j] == '"' and output[j-1] != '\\':
-                    j += 1
-                    break
+                if output[j] == '"':
+                    backslash_count = 0
+                    k = j - 1
+                    while k >= 0 and output[k] == '\\':
+                        backslash_count += 1
+                        k -= 1
+                    if backslash_count % 2 == 0:
+                        j += 1
+                        break
                 j += 1
         elif ch in ('}', ']'):
             # Strip trailing whitespace and comma before this
@@ -248,15 +263,16 @@ def load_config(storage_path: str | None = None) -> None:
                         _explicit_keys.add(key)  # Track explicitly set keys
                     else:
                         logger.warning(
-                            f"Config key '{key}' has invalid type. "
-                            f"Expected {CONFIG_TYPES[key]}, got {type(value).__name__}. Using default."
+                            "Config key '%s' has invalid type. "
+                            "Expected %s, got %s. Using default.",
+                            key, CONFIG_TYPES[key], type(value).__name__
                         )
-                # Ignore unknown keys silently
+                    # Ignore unknown keys silently
         except json.JSONDecodeError as e:
-            logger.error(f"Failed to parse config.jsonc: {e}")
+            logger.error("Failed to parse config.jsonc: %s", e)
             _GLOBAL_CONFIG = DEFAULTS.copy()
         except Exception as e:
-            logger.error(f"Failed to load config.jsonc: {e}")
+            logger.error("Failed to load config.jsonc: %s", e)
             _GLOBAL_CONFIG = DEFAULTS.copy()
     else:
         _GLOBAL_CONFIG = DEFAULTS.copy()
@@ -268,6 +284,14 @@ def load_config(storage_path: str | None = None) -> None:
 def _parse_env_value(value: str, expected_type: type | tuple) -> Any:
     """Parse env var string to expected type."""
     try:
+        if isinstance(expected_type, tuple):
+            for t in expected_type:
+                if t == type(None):
+                    continue
+                parsed = _parse_env_value(value, t)
+                if parsed is not None:
+                    return parsed
+            return None
         if expected_type == bool:
             return value.lower() in ("true", "1", "yes", "on")
         elif expected_type == int:
@@ -277,23 +301,19 @@ def _parse_env_value(value: str, expected_type: type | tuple) -> Any:
         elif expected_type == str:
             return value
         elif expected_type == list:
-            # Try JSON array first (["*.log", "*.tmp"])
             try:
                 return json.loads(value)
             except (ValueError, json.JSONDecodeError):
-                # Fall back to legacy comma-separated format (*.log,*.tmp)
                 result = []
                 for token in value.split(","):
                     token = token.strip()
                     if token:
                         result.append(token)
-                return result if result else None
+                return result
         elif expected_type == dict:
-            # Try JSON first (new format: {"ext": "lang", ...})
             try:
                 return json.loads(value)
             except (ValueError, json.JSONDecodeError):
-                # Fall back to legacy comma-separated format (.ext:lang,.ext:lang)
                 result = {}
                 for token in value.split(","):
                     token = token.strip()
@@ -304,14 +324,13 @@ def _parse_env_value(value: str, expected_type: type | tuple) -> Any:
                     lang = lang.strip()
                     if ext and lang:
                         result[ext] = lang
-                return result if result else None
+                return result
         else:
             logger.warning(f"Unknown config type %s for env var value: %s", expected_type, value)
             return None
     except (ValueError, json.JSONDecodeError):
         logger.warning(f"Failed to parse env var value: {value}")
         return None
-    return value
 
 
 def _apply_env_var_fallback(explicit_keys: set[str] | None = None) -> None:
@@ -345,16 +364,56 @@ def _apply_env_var_fallback(explicit_keys: set[str] | None = None) -> None:
                 _GLOBAL_CONFIG[config_key] = parsed
 
 
+def _resolve_repo_key(repo: str) -> str | None:
+    """Resolve a repo identifier to the absolute path key used in _PROJECT_CONFIGS.
+    
+    _PROJECT_CONFIGS is keyed by resolved absolute paths (e.g. "D:\\...\\project").
+    The 'repo' argument from tool calls may be:
+    - An absolute path (already a valid key)
+    - A repo identifier like "jcodemunch-mcp" or "local/jcodemunch-mcp-384d867b"
+    
+    Returns the resolved key if found, None otherwise.
+    """
+    if repo in _PROJECT_CONFIGS:
+        return repo
+    if repo in _REPO_PATH_CACHE:
+        cached = _REPO_PATH_CACHE[repo]
+        if cached in _PROJECT_CONFIGS:
+            return cached
+    try:
+        from .storage.index_store import IndexStore
+        storage_path = os.environ.get("CODE_INDEX_PATH", str(Path.home() / ".code-index"))
+        store = IndexStore(base_path=storage_path)
+        repos = store.list_repos()
+        for entry in repos:
+            source_root = entry.get("source_root", "")
+            if not source_root:
+                continue
+            resolved = str(Path(source_root).resolve())
+            display_name = entry.get("display_name", "")
+            repo_name = entry.get("repo", "")
+            if display_name:
+                _REPO_PATH_CACHE[display_name] = resolved
+            if repo_name:
+                _REPO_PATH_CACHE[repo_name] = resolved
+            if repo == display_name or repo == repo_name or repo == resolved:
+                return resolved
+    except Exception:
+        pass
+    return None
+
+
 def get(key: str, default: Any = None, repo: str | None = None) -> Any:
     """Get config value. If repo is given, uses merged project config."""
-    if repo and repo in _PROJECT_CONFIGS:
-        return _PROJECT_CONFIGS[repo].get(key, default)
+    if repo:
+        resolved = _resolve_repo_key(repo)
+        if resolved and resolved in _PROJECT_CONFIGS:
+            return _PROJECT_CONFIGS[resolved].get(key, default)
     return _GLOBAL_CONFIG.get(key, default)
 
 
 def _content_hash(content: str) -> str:
     """Compute SHA-256 hash of content (first 12 hex chars)."""
-    import hashlib
     return hashlib.sha256(content.encode("utf-8")).hexdigest()[:12]
 
 
@@ -368,6 +427,8 @@ def load_project_config(source_root: str) -> None:
     - Config file edited (hash changed, reload)
     - File touched but unchanged (hash same, no reload)
     - Index dropped and recreated (cache still valid if file unchanged)
+    
+    Thread-safe: uses _CONFIG_LOCK to protect global dict mutations.
     """
     project_config_path = Path(source_root) / ".jcodemunch.jsonc"
     repo_key = str(Path(source_root).resolve())
@@ -377,35 +438,36 @@ def load_project_config(source_root: str) -> None:
             content = project_config_path.read_text(encoding="utf-8-sig")
             content_hash = _content_hash(content)
             
-            # Check if content unchanged (handles touch, mtime-only changes)
-            if repo_key in _PROJECT_CONFIGS:
-                if _PROJECT_CONFIG_HASHES.get(repo_key) == content_hash:
-                    return  # Cache is fresh
+            with _CONFIG_LOCK:
+                if repo_key in _PROJECT_CONFIGS:
+                    if _PROJECT_CONFIG_HASHES.get(repo_key) == content_hash:
+                        return
             
             stripped = _strip_jsonc(content)
             project_config = json.loads(stripped)
 
-            # Merge over global
-            merged = {**_GLOBAL_CONFIG}
-            for key, value in project_config.items():
-                if key in CONFIG_TYPES:
-                    if _validate_type(key, value, CONFIG_TYPES[key]):
-                        merged[key] = value
-                    else:
-                        logger.warning(
-                            f"Project config key '{key}' has invalid type. Using global default."
-                        )
-            _PROJECT_CONFIGS[repo_key] = merged
-            _PROJECT_CONFIG_HASHES[repo_key] = content_hash
+            with _CONFIG_LOCK:
+                merged = deepcopy(_GLOBAL_CONFIG)
+                for key, value in project_config.items():
+                    if key in CONFIG_TYPES:
+                        if _validate_type(key, value, CONFIG_TYPES[key]):
+                            merged[key] = value
+                        else:
+                            logger.warning(
+                                "Project config key '%s' has invalid type. Using global default.",
+                                key
+                            )
+                _PROJECT_CONFIGS[repo_key] = merged
+                _PROJECT_CONFIG_HASHES[repo_key] = content_hash
         except Exception as e:
-            logger.warning(f"Failed to load project config: {e}")
-            _PROJECT_CONFIGS[repo_key] = _GLOBAL_CONFIG.copy()
+            logger.warning("Failed to load project config: %s", e)
+            with _CONFIG_LOCK:
+                _PROJECT_CONFIGS[repo_key] = deepcopy(_GLOBAL_CONFIG)
     else:
-        # No config file - use global defaults
-        # Only cache if not already cached (avoids overwriting valid config)
-        if repo_key not in _PROJECT_CONFIGS:
-            _PROJECT_CONFIGS[repo_key] = _GLOBAL_CONFIG.copy()
-        _PROJECT_CONFIG_HASHES.pop(repo_key, None)
+        with _CONFIG_LOCK:
+            if repo_key not in _PROJECT_CONFIGS:
+                _PROJECT_CONFIGS[repo_key] = deepcopy(_GLOBAL_CONFIG)
+            _PROJECT_CONFIG_HASHES.pop(repo_key, None)
 
 
 def _list_repos_for_config() -> list[dict]:

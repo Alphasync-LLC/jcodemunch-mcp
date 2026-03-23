@@ -2086,7 +2086,7 @@ def main(argv: Optional[list[str]] = None):
         if not result.get("success"):
             sys.exit(1)
     else:
-         # serve (default)
+        # serve (default)
         # Load config at startup so config values are available to all tools
         config_module.load_config()
         config_module.load_all_project_configs()

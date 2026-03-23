@@ -14,6 +14,7 @@ def restore_extensions():
     import jcodemunch_mcp.parser.languages as lang_module
     original_ext = dict(LANGUAGE_EXTENSIONS)
     original_config = config_module._GLOBAL_CONFIG.copy()
+    lang_module._APPLIED_EXTENSIONS = False
     yield
     LANGUAGE_EXTENSIONS.clear()
     LANGUAGE_EXTENSIONS.update(original_ext)

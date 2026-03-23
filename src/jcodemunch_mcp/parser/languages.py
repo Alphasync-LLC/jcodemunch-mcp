@@ -2,6 +2,7 @@
 
 import logging
 import os
+import threading
 from dataclasses import dataclass
 from typing import Optional
 
@@ -1371,6 +1372,7 @@ LANGUAGE_REGISTRY = {
 logger = logging.getLogger(__name__)
 
 _APPLIED_EXTENSIONS = False
+_EXTENSIONS_LOCK = threading.Lock()
 
 
 _OPENAPI_BASENAMES = frozenset({
@@ -1386,24 +1388,26 @@ def _apply_extra_extensions() -> None:
     (both JSON and legacy comma-separated formats) applied at startup.
 
     Lazy — runs once on first access (cached via _APPLIED_EXTENSIONS flag).
+    Thread-safe via _EXTENSIONS_LOCK.
     """
     global _APPLIED_EXTENSIONS
-    if _APPLIED_EXTENSIONS:
-        return
+    with _EXTENSIONS_LOCK:
+        if _APPLIED_EXTENSIONS:
+            return
 
-    from .. import config as _cfg
+        from .. import config as _cfg
 
-    extra_extensions = _cfg.get("extra_extensions", {})
-    for ext, lang in extra_extensions.items():
-        if not ext or not lang:
-            logger.warning("extra_extensions: empty extension or language %r:%r — skipped", ext, lang)
-            continue
-        if lang not in LANGUAGE_REGISTRY:
-            logger.warning("extra_extensions: unknown language %r for extension %r — skipped", lang, ext)
-            continue
-        LANGUAGE_EXTENSIONS[ext] = lang
+        extra_extensions = _cfg.get("extra_extensions", {})
+        for ext, lang in extra_extensions.items():
+            if not ext or not lang:
+                logger.warning("extra_extensions: empty extension or language %r:%r — skipped", ext, lang)
+                continue
+            if lang not in LANGUAGE_REGISTRY:
+                logger.warning("extra_extensions: unknown language %r for extension %r — skipped", lang, ext)
+                continue
+            LANGUAGE_EXTENSIONS[ext] = lang
 
-    _APPLIED_EXTENSIONS = True
+        _APPLIED_EXTENSIONS = True
 
 
 def get_language_extensions() -> dict[str, str]:
@@ -1420,6 +1424,7 @@ def get_language_for_path(path: str) -> "Optional[str]":
     2. Compound suffixes (e.g. ``.blade.php``, ``.openapi.yaml``).
     3. Last extension (e.g. ``.php``).
     """
+    _apply_extra_extensions()
     import os as _os
     lower = path.lower()
     base = _os.path.basename(lower)
