@@ -90,3 +90,21 @@ class TestConfigLoading:
 
             assert get("max_folder_files") == 2000
             assert get("use_ai_summaries") is True
+
+    def test_loads_valid_config(self, monkeypatch):
+        """Should load valid JSONC config."""
+        from src.jcodemunch_mcp.config import load_config, get, _GLOBAL_CONFIG
+
+        _GLOBAL_CONFIG.clear()
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config_path = Path(tmpdir) / "config.jsonc"
+            config_path.write_text('''{
+                "max_folder_files": 5000,
+                "use_ai_summaries": false
+            }''')
+
+            load_config(tmpdir)
+
+            assert get("max_folder_files") == 5000
+            assert get("use_ai_summaries") is False
