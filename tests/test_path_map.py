@@ -213,41 +213,44 @@ def test_index_folder_reverse_remap_finds_existing_index(tmp_path, monkeypatch):
     )
 
 
-from unittest.mock import patch
+def test_watcher_reverse_remap_produces_stored_hash(monkeypatch):
+    """Applying reverse remap before _local_repo_id yields the same hash as the stored path.
+
+    This verifies the logic used at both watcher touch points (_watch_single line 274
+    and _stop_watching line 751): that a current-machine path remapped back to the
+    stored prefix produces the same repo ID the index was built with.
+    """
+    from jcodemunch_mcp.watcher import _local_repo_id
+
+    monkeypatch.setenv(ENV_VAR, "/real/project=/remapped/project")
+
+    stored_id = _local_repo_id("/real/project")
+
+    _pairs = parse_path_map()
+    lookup_id = _local_repo_id(remap("/remapped/project", _pairs, reverse=True))
+
+    assert lookup_id == stored_id, (
+        f"Reverse-remapped path must produce same hash as stored path. "
+        f"Expected {stored_id!r}, got {lookup_id!r}"
+    )
 
 
-def test_watcher_local_repo_id_uses_reverse_remap(monkeypatch):
-    """_watch_single calls _local_repo_id with the remapped (stored) path."""
-    from jcodemunch_mcp import watcher as watcher_mod
+def test_stop_watching_remap_produces_stored_hash(monkeypatch):
+    """The reverse remap in _stop_watching produces the same hash as the original indexed path.
 
-    monkeypatch.setenv(ENV_VAR, "/remapped=/real")
+    _stop_watching is a closure inside watch() and cannot be called directly.
+    This test verifies the underlying remap+hash logic it uses (line 751).
+    """
+    from jcodemunch_mcp.watcher import _local_repo_id
 
-    captured = {}
+    monkeypatch.setenv(ENV_VAR, "/stored/root=/current/root")
 
-    original_fn = watcher_mod._local_repo_id
+    original_id = _local_repo_id("/stored/root/myproject")
 
-    def capturing_local_repo_id(path):
-        captured["path"] = path
-        return original_fn(path)
+    _pairs = parse_path_map()
+    cleanup_id = _local_repo_id(remap("/current/root/myproject", _pairs, reverse=True))
 
-    with patch.object(watcher_mod, "_local_repo_id", side_effect=capturing_local_repo_id):
-        # Drive just enough of _watch_single to hit the _local_repo_id call.
-        # We stop immediately by raising inside the store constructor.
-        try:
-            import asyncio
-            from jcodemunch_mcp.watcher import _watch_single
-
-            async def run():
-                # _watch_single loops forever; we interrupt on first store access
-                with patch("jcodemunch_mcp.watcher.IndexStore", side_effect=RuntimeError("stop")):
-                    try:
-                        await _watch_single(folder_path="/remapped/myproject", storage_path=None)
-                    except RuntimeError:
-                        pass
-
-            asyncio.run(run())
-        except Exception:
-            pass
-
-    if captured:
-        assert captured["path"].replace("\\", "/") == "/real/myproject", captured["path"]
+    assert cleanup_id == original_id, (
+        f"_stop_watching reverse remap must match stored hash. "
+        f"Expected {original_id!r}, got {cleanup_id!r}"
+    )
