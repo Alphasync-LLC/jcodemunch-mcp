@@ -1,9 +1,9 @@
 # jcodemunch-mcp — Project Brief
 
 ## Current State
-- **Version:** 1.10.19 (published to PyPI)
+- **Version:** 1.10.20 (published to PyPI)
 - **INDEX_VERSION:** 4
-- **Tests:** 991 passed, 7 skipped
+- **Tests:** 1101 passed, 7 skipped
 - **Python:** >=3.10
 
 ## Key Files
@@ -37,6 +37,7 @@ src/jcodemunch_mcp/
     list_repos.py
     resolve_repo.py              # O(1) path-to-repo-ID lookup; avoids full list_repos scan
     invalidate_cache.py
+  config.py                      # Centralized JSONC config: global + per-project layering, env var fallback, language/tool gating
     find_importers.py            # NEW v1.3.0 — find all files that import a given file
     find_references.py           # NEW v1.3.0 — find all files that reference a given identifier
     _utils.py
@@ -127,6 +128,7 @@ Custom parsers (tree-sitter grammar lacks clean named fields):
 | #109 | DrHayt | Fix SKIP_DIRS_REGEX missing `$` anchor — prevented prefix-match pruning (e.g. `proto` eating `protoc-gen-*`) → merged |
 | #158 | iEdgir01 | JCODEMUNCH_PATH_MAP — cross-platform path prefix remapping; merged v1.10.18 |
 | #160 | DrHayt | resolve_repo tool — O(1) path-to-repo-ID lookup; merged v1.10.19 |
+| #162 | MariusAdrian88 | Centralized JSONC config: language filtering, tool gating, meta control, per-project overrides; merged v1.10.20 |
 
 
 ## Roadmap / Backlog
@@ -201,6 +203,7 @@ Custom parsers (tree-sitter grammar lacks clean named fields):
 | 1.10.17 | CLI: `index-file <path>` subcommand — re-index a single file from the shell; enables PostToolUse hooks for automatic index freshness after agent edits (PR #156 by gokhanozdemir) |
 | 1.10.18 | Feat: JCODEMUNCH_PATH_MAP env var — cross-platform path prefix remapping so an index built on one machine (e.g. Linux /home/user) can be reused on another (e.g. Windows C:\Users\user) without re-indexing; directory-boundary-aware matching, mixed-separator support, =signs in paths; 22 tests — contributed by iEdgir01 (PR #158); fix: remap() returns path unchanged on no-match (prevented Windows separator regression) |
 | 1.10.19 | Feat: resolve_repo tool — O(1) path-to-repo-ID lookup; accepts repo root, worktree, subdirectory, or file path; computes deterministic hash ID and checks index existence directly; returns full metadata when indexed or hint to call index_folder when not; ~200 tokens vs potentially thousands from list_repos; 8 tests — contributed by DrHayt (PR #160) |
+| 1.10.20 | Feat: centralized JSONC config system — global ~/.code-index/config.jsonc + per-project .jcodemunch.jsonc; language filtering (skip parsers for unlisted languages); tool gating (disabled_tools removes from schema); meta_fields allowlist replaces suppress_meta in schema; description overrides; env vars deprecated as fallback-only; hash-based project config cache; config --init CLI; 110 new tests (1101 total) — contributed by MariusAdrian88 (PR #162) |
 
 ## Maintenance Practices
 
