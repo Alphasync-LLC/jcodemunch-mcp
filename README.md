@@ -65,7 +65,7 @@ Index once. Query cheaply. Keep moving.
 - **Julian Horsey** (Geeky Gadgets) — *"3,850 tokens reduced to just 700 — a 5.5× improvement"* · [JCodeMunch AI Token Saver](https://www.geeky-gadgets.com/jcodemunch-mcp-token-savings/)
 - **Sion Williams** — *"preserving tokens for tasks that actually require reasoning rather than retrieval"* · [March 2026 AI Workflow Update](https://sionwilliams.com/posts/2026-03-06-ai-workflow-update/)
 - **Traci Lim** (AWS · ASEAN AI Lead) — featured in [5 Repos That Save Token Usage in Claude Code](https://www.tracilzw.com/posts/5-repos-save-token-usage-claude-code)
-- **Eric Grill** — *"smaller local models could pull precise context from huge repos — ~90% less context usage"* · [jCodemunch: Context Engine for AI Agents](https://www.ericgrill.com/blog/jcodemunch-mcp-context-engine-for-ai-agents)
+- **Eric Grill** — *"context is the scarce resource. Cut it by 90% and the whole stack gets cheaper and more reliable"* · [jCodemunch: Context Engine for AI Agents](https://www.ericgrill.com/blog/jcodemunch-mcp-context-engine-for-ai-agents)
 
 [Full recognition page →](https://j.gravelle.us/jCodeMunch/recognition.php)
 
