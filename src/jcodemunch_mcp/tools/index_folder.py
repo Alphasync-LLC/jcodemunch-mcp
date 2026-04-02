@@ -1032,9 +1032,40 @@ def index_folder(
         if active_providers and all_symbols:
             enrich_symbols(all_symbols, active_providers)
 
-        # Generate summaries
+        # Generate summaries — preserve existing summaries for unchanged files
         if all_symbols:
-            all_symbols = summarize_symbols(all_symbols, use_ai=use_ai_summaries)
+            _folder_existing_summaries: dict[tuple[str, str, str], str] | None = None
+            _folder_unchanged_files: set[str] | None = None
+            if (
+                existing_index is not None
+                and existing_index.file_hashes
+                and existing_index.symbols
+            ):
+                _folder_unchanged_files = {
+                    f for f, h in file_hashes.items()
+                    if existing_index.file_hashes.get(f) == h
+                }
+                if _folder_unchanged_files:
+                    _folder_existing_summaries = {
+                        (s.file, s.name, s.kind): s.summary
+                        for s in existing_index.symbols
+                        if s.summary and s.file in _folder_unchanged_files
+                    }
+                    logger.info(
+                        "index_folder full — %d/%d files unchanged, %d summaries preserved",
+                        len(_folder_unchanged_files), len(file_hashes),
+                        len(_folder_existing_summaries) if _folder_existing_summaries else 0,
+                    )
+
+            if _folder_existing_summaries and _folder_unchanged_files:
+                from ._indexing_pipeline import _split_for_summarization
+                _needs_summary, _already_summarized = _split_for_summarization(
+                    all_symbols, _folder_existing_summaries, _folder_unchanged_files
+                )
+                _summarized = summarize_symbols(_needs_summary, use_ai=use_ai_summaries) if _needs_summary else []
+                all_symbols = _summarized + _already_summarized
+            else:
+                all_symbols = summarize_symbols(all_symbols, use_ai=use_ai_summaries)
 
         # Generate file-level summaries (single-pass grouping) using shared helpers
         file_symbols_map = defaultdict(list)

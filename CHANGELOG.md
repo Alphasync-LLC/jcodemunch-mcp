@@ -4,6 +4,11 @@ All notable changes to jcodemunch-mcp are documented here.
 
 ## [Unreleased]
 
+## [1.21.2] - 2026-04-02
+
+### Added
+- **Summary preservation during full reindex** — when a full reindex runs over a repo that already has an index (e.g. after a schema bump or explicit `incremental=False` call), symbols whose file content hash is unchanged now reuse their existing AI-generated summaries instead of triggering new AI calls. Symbols in changed or new files are summarized normally. This is automatic and requires no parameter changes — the optimization fires whenever a prior index is present and has stored file hashes. Addresses issue #192 (reported by rknighton).
+
 ## [1.21.1] - 2026-04-02
 
 ### Fixed
