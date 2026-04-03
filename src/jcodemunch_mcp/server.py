@@ -3215,6 +3215,11 @@ def main(argv: Optional[list[str]] = None):
         help="Index the current working directory after setup",
     )
     init_parser.add_argument(
+        "--audit",
+        action="store_true",
+        help="Audit agent config files for token waste, stale references, and bloat",
+    )
+    init_parser.add_argument(
         "--dry-run",
         action="store_true",
         dest="dry_run",
@@ -3321,6 +3326,7 @@ def main(argv: Optional[list[str]] = None):
             claude_md=args.claude_md,
             hooks=args.hooks,
             index=args.index,
+            audit=args.audit,
             dry_run=args.dry_run,
             yes=args.yes,
             no_backup=args.no_backup,

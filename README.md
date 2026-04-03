@@ -222,12 +222,12 @@ pip install jcodemunch-mcp
 jcodemunch-mcp init
 ```
 
-`init` auto-detects your MCP clients (Claude Code, Claude Desktop, Cursor, Windsurf, Continue), writes their config entries, installs the CLAUDE.md prompt policy so your agent actually uses jCodeMunch, and optionally indexes your project. Run `jcodemunch-mcp init --help` for all flags.
+`init` auto-detects your MCP clients (Claude Code, Claude Desktop, Cursor, Windsurf, Continue), writes their config entries, installs the CLAUDE.md prompt policy so your agent actually uses jCodeMunch, optionally indexes your project, and audits your agent config files for token waste. Run `jcodemunch-mcp init --help` for all flags.
 
 For non-interactive CI or scripting:
 
 ```bash
-jcodemunch-mcp init --yes --claude-md global --index
+jcodemunch-mcp init --yes --claude-md global --index --audit
 ```
 
 ### Option B: Manual setup

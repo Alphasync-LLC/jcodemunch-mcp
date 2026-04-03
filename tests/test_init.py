@@ -18,6 +18,7 @@ from jcodemunch_mcp.cli.init import (
     configure_client,
     install_claude_md,
     install_hooks,
+    run_audit,
     run_init,
     _CLAUDE_MD_MARKER,
     _CLAUDE_MD_POLICY,
@@ -286,3 +287,53 @@ def test_detect_clients_returns_list():
         assert isinstance(c, MCPClient)
         assert c.name
         assert c.method in ("cli", "json_patch")
+
+
+# ---------------------------------------------------------------------------
+# run_audit
+# ---------------------------------------------------------------------------
+
+def test_run_audit_dry_run():
+    lines = run_audit(dry_run=True)
+    assert any("would" in l for l in lines)
+
+
+def test_run_audit_with_config(tmp_path):
+    (tmp_path / "CLAUDE.md").write_text("# My policy\nUse tools.", encoding="utf-8")
+    lines = run_audit(project_path=str(tmp_path))
+    assert any("scanned" in l for l in lines)
+
+
+def test_run_audit_no_config(tmp_path):
+    lines = run_audit(project_path=str(tmp_path))
+    # May find global configs but project dir has none
+    assert isinstance(lines, list)
+
+
+# ---------------------------------------------------------------------------
+# run_init with --audit
+# ---------------------------------------------------------------------------
+
+def test_run_init_yes_includes_audit(tmp_path, monkeypatch, capsys):
+    """--yes mode should run audit by default."""
+    monkeypatch.setattr("jcodemunch_mcp.cli.init._detect_clients", lambda: [])
+    monkeypatch.setattr("jcodemunch_mcp.cli.init._claude_md_path", lambda scope: tmp_path / "CLAUDE.md")
+    # Create a config file so audit has something to scan
+    (tmp_path / "CLAUDE.md").write_text("# Test policy", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+
+    rc = run_init(yes=True, no_backup=True)
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "Audit" in out
+
+
+def test_run_init_dry_run_audit(tmp_path, monkeypatch, capsys):
+    """--dry-run --yes should show audit would run."""
+    monkeypatch.setattr("jcodemunch_mcp.cli.init._detect_clients", lambda: [])
+    monkeypatch.setattr("jcodemunch_mcp.cli.init._claude_md_path", lambda scope: tmp_path / "CLAUDE.md")
+
+    rc = run_init(dry_run=True, yes=True)
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "would audit" in out
