@@ -1,9 +1,9 @@
 # jcodemunch-mcp — Project Brief
 
 ## Current State
-- **Version:** 1.21.20 (published to PyPI)
+- **Version:** 1.21.22 (published to PyPI)
 - **INDEX_VERSION:** 7
-- **Tests:** 1889 passed, 5 skipped
+- **Tests:** 2008 passed, 5 skipped
 - **Python:** >=3.10
 
 ## Key Files
@@ -15,7 +15,8 @@ src/jcodemunch_mcp/
   parser/
     languages.py       # LANGUAGE_REGISTRY, extension → language map, LanguageSpec
     extractor.py       # parse_file() dispatch; custom parsers for Erlang, Fortran, SQL, Razor
-    imports.py         # Regex import extraction (19 languages); extract_imports(), resolve_specifier()
+    imports.py         # Regex import extraction (19 languages); extract_imports(), resolve_specifier(), build_psr4_map()
+    fqn.py             # PHP FQN ↔ symbol_id translation (PSR-4); symbol_to_fqn(), fqn_to_symbol()
   storage/
     sqlite_store.py    # CodeIndex, save/load/incremental_save, WAL-aware LRU cache (_db_mtime_ns)
   summarizer/

@@ -4,6 +4,15 @@ All notable changes to jcodemunch-mcp are documented here.
 
 ## [Unreleased]
 
+## [1.21.22] - 2026-04-02
+
+### Added
+- **Stage 4: Cross-language dependency graph (Laravel)** — `laravel.py` now injects extra import edges via the new `get_extra_imports()` provider hook: Blade `@extends`/`@include`/`@includeWhen`/`@includeUnless`/`@component`/`view()` templates, `<x-*>` components, Eloquent relationship edges (`hasMany`/`belongsTo`/etc.), 40 built-in Laravel facades mapped to underlying `Illuminate\*` classes, route→controller file edges, and Inertia.js `Inertia::render`/`inertia()` → Vue/React page component resolution. Frontend `fetch`/`axios`/`useFetch` API calls are matched to Laravel route→controller files via wildcard URI matching.
+- **Stage 5: Nuxt/Next.js context providers** — `parser/context/nuxt.py` (`NuxtContextProvider`) parses `pages/` for file-based routing, `server/api/` for API handlers with HTTP method extraction, and scans `composables/`/`utils/` for auto-import edges. `parser/context/nextjs.py` (`NextjsContextProvider`) handles App Router `page`/`layout`/`loading`/`error`/`route` files, route group `(auth)` segment collapsing, middleware detection, and HTTP method extraction from route handlers.
+- **Stage 6: FQN ↔ symbol_id translation** — new `parser/fqn.py` with `symbol_to_fqn()` and `fqn_to_symbol()` for bidirectional PSR-4 translation. Optional `fqn` parameter added to `get_symbol_source`, `get_blast_radius`, `search_symbols`, and `get_context_bundle`. `_utils.py` gains `resolve_fqn()` helper. Detailed error messages for missing PSR-4 config, unindexed files, or namespace mismatch.
+- **`collect_extra_imports()` merger in `context/base.py`** — called in all 4 indexing pipeline paths; deduplicates by specifier, swallows per-provider failures with a warning.
+- **125 new tests** across `test_laravel_provider.py`, `test_nuxt_provider.py`, `test_nextjs_provider.py`, `test_fqn.py`, and `test_find_importers.py`; 2008 total passing.
+
 ## [1.21.21] - 2026-04-02
 
 ### Changed
