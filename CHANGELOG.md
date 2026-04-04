@@ -4,6 +4,13 @@ All notable changes to jcodemunch-mcp are documented here.
 
 ## [Unreleased]
 
+## [1.21.26] - 2026-04-04
+
+### Added
+- **Cursor rules injection in `init`** — when Cursor is detected, `jcodemunch-mcp init` now offers to write `.cursor/rules/jcodemunch.mdc` with `alwaysApply: true`. This ensures the code-exploration policy is in context for every Cursor agent turn, including subagents, fixing the unreliable tool-fallback behaviour reported by Cursor users.
+- **Windsurf rules injection in `init`** — when Windsurf is detected, `init` now offers to append the code-exploration policy to `.windsurfrules`. Both files are idempotent, backup-aware, and respect `--dry-run`.
+- **`--demo` flag for `init`** — `jcodemunch-mcp init --demo` walks through the full setup process without making any changes, then prints "Had this NOT been a demo, I would have:" followed by each action and its benefit. 10 new tests in `test_init.py`.
+
 ## [1.21.25] - 2026-04-03
 
 ### Added
