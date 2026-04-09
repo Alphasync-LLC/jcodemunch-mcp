@@ -27,6 +27,7 @@ from .summarizer import get_provider_name
 from .reindex_state import await_freshness_if_strict
 from .path_map import ENV_VAR as _PATH_MAP_ENV_VAR
 from .storage import result_cache_invalidate as _result_cache_invalidate
+from .storage import write_pulse as _write_pulse
 
 try:
     from .watcher import watch_folders, WatcherError
@@ -2569,6 +2570,10 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
                         _meta[field] = existing_meta[field]
                 if _meta:
                     result["_meta"] = _meta
+        # Per-call pulse for downstream consumers (dashboards, monitors)
+        _saved = result.get("_meta", {}).get("tokens_saved", 0) if isinstance(result, dict) else 0
+        _write_pulse(name, tokens_saved=_saved, base_path=storage_path)
+
         return [TextContent(type="text", text=json.dumps(result, separators=(',', ':')))]
 
     except KeyError as e:
@@ -3261,6 +3266,12 @@ def _run_config(check: bool = False, init: bool = False, upgrade: bool = False) 
         print(f"  Active provider:  {yellow('none')} — no API key set, signature fallback active")
         print(f"  {dim('Set ANTHROPIC_API_KEY, GOOGLE_API_KEY, OPENAI_API_BASE, MINIMAX_API_KEY, ZHIPUAI_API_KEY, or OPENROUTER_API_KEY to enable')}")
 
+    allow_remote = _cfg.get("allow_remote_summarizer", False)
+    allow_label = str(allow_remote).lower()
+    if not allow_remote and provider_name:
+        allow_label += f" {dim('(only affects custom base URLs, not standard API endpoints)')}"
+    row("allow_remote_summarizer", allow_label, _detect_source("allow_remote_summarizer", False))
+
     # ── Transport ──────────────────────────────────────────────────────────
     section("Transport")
     transport = _cfg.get("transport", "stdio")
@@ -3297,7 +3308,6 @@ def _run_config(check: bool = False, init: bool = False, upgrade: bool = False) 
     share = _cfg.get("share_savings", True)
     row("share_savings", green("enabled") if share else yellow("disabled"), _detect_source("share_savings", True))
     row("summarizer_concurrency", _cfg.get("summarizer_concurrency", 4), _detect_source("summarizer_concurrency", 4))
-    row("allow_remote_summarizer", str(_cfg.get("allow_remote_summarizer", False)).lower(), _detect_source("allow_remote_summarizer", False))
 
     # ── --check ───────────────────────────────────────────────────────────
     if check:
