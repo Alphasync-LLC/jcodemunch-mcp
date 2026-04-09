@@ -1,7 +1,7 @@
 # jcodemunch-mcp — Project Brief
 
 ## Current State
-- **Version:** 1.24.1 (published to PyPI)
+- **Version:** 1.24.2 (published to PyPI)
 - **INDEX_VERSION:** 8
 - **Tests:** 2373 passed, 5 skipped
 - **Python:** >=3.10
@@ -60,6 +60,7 @@ src/jcodemunch_mcp/
 | `config` | Print effective configuration grouped by concern |
 | `config --check` | Also validate prerequisites (storage writable, AI pkg installed, HTTP pkgs present) |
 | `config --upgrade` | Add missing keys from current template to existing config.jsonc, preserving user values |
+| `install-pack [id]` | Download and install a Starter Pack pre-built index; `--list` for catalog, `--license KEY` for premium |
 | `hook-pretooluse` | PreToolUse hook: intercept Read on large code files, suggest jCodemunch (reads JSON stdin) |
 | `hook-posttooluse` | PostToolUse hook: auto-reindex files after Edit/Write (reads JSON stdin) |
 | `hook-precompact` | PreCompact hook: generate session snapshot before context compaction (reads JSON stdin) |
@@ -105,6 +106,7 @@ Tree-sitter grammar lacks clean named fields for these — custom regex extracto
 | `OPENROUTER_API_KEY` | — | Enables OpenRouter summaries (default model: `meta-llama/llama-3.3-70b-instruct:free`) |
 | `GEMINI_EMBED_TASK_AWARE` | 1 | Set `0`/`false`/`no`/`off` to disable task-type hints (`RETRIEVAL_DOCUMENT` / `CODE_RETRIEVAL_QUERY`) when using Gemini embeddings |
 | `JCODEMUNCH_CROSS_REPO_DEFAULT` | 0 | Set 1 to enable cross-repo traversal by default in find_importers, get_blast_radius, get_dependency_graph |
+| `JCODEMUNCH_EVENT_LOG` | — | Set `1` to write `_pulse.json` on every tool call (per-call activity signal for dashboards) |
 
 ## PR / Issue History
 See `git log` and CHANGELOG.md. Active contributors: MariusAdrian88, DrHayt, tmeckel, drax1222.

@@ -2,6 +2,16 @@
 
 All notable changes to jcodemunch-mcp are documented here.
 
+## [1.24.2] — 2026-04-08
+
+### Added
+- **Starter Packs** (`install-pack` subcommand): download pre-built indexes for popular frameworks. `--list` shows the catalog, `--license KEY` for premium packs, `--force` to re-download. Free packs require no license
+- **Per-call pulse signal** (`_pulse.json`): opt-in activity file for downstream dashboards and monitors. Set `JCODEMUNCH_EVENT_LOG=1` to enable. Writes tool name, timestamp, call count, and tokens saved on every tool call (#225)
+
+### Fixed
+- `test_summarizer`: "misconfigured" error now names the missing package and includes the exact `pip install` command instead of a generic message (#224)
+- `config` output: `allow_remote_summarizer` moved from Privacy section to AI Summarizer section with clarification that it only affects custom base URLs, not standard API endpoints (#224)
+
 ## [1.24.1] — 2026-04-08
 
 ### Changed

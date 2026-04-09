@@ -3801,6 +3801,36 @@ def main(argv: Optional[list[str]] = None):
     )
     _add_common_args(wc_parser)
 
+    # --- install-pack ---
+    ip_parser = subparsers.add_parser(
+        "install-pack",
+        help="Download and install a Starter Pack pre-built index",
+    )
+    ip_parser.add_argument(
+        "pack_id",
+        nargs="?",
+        default=None,
+        help="Pack identifier to install (e.g. nodejs, fastapi)",
+    )
+    ip_parser.add_argument(
+        "--license",
+        default=None,
+        dest="license_key",
+        metavar="KEY",
+        help="jCodeMunch license key (required for premium packs)",
+    )
+    ip_parser.add_argument(
+        "--list",
+        action="store_true",
+        dest="list_packs",
+        help="List all available starter packs",
+    )
+    ip_parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Re-download and overwrite an already-installed pack",
+    )
+
     # Backwards compat: if first non-flag arg isn't a known subcommand,
     # prepend "serve" so legacy invocations like `jcodemunch-mcp --transport sse` still work.
     # But let --help and -V be handled by the top-level parser first.
@@ -3809,7 +3839,7 @@ def main(argv: Optional[list[str]] = None):
     if any(arg in top_level_flags for arg in raw_argv):
         args = parser.parse_args(raw_argv)
     else:
-        known_commands = {"serve", "watch", "hook-event", "hook-pretooluse", "hook-posttooluse", "hook-precompact", "watch-claude", "config", "index-file", "claude-md", "init"}
+        known_commands = {"serve", "watch", "hook-event", "hook-pretooluse", "hook-posttooluse", "hook-precompact", "watch-claude", "config", "index-file", "claude-md", "init", "install-pack"}
         has_subcommand = any(arg in known_commands for arg in raw_argv if not arg.startswith("-"))
         if not has_subcommand:
             raw_argv = ["serve"] + list(raw_argv)
@@ -3842,6 +3872,15 @@ def main(argv: Optional[list[str]] = None):
             demo=args.demo,
             yes=args.yes,
             no_backup=args.no_backup,
+        ))
+
+    if args.command == "install-pack":
+        from .cli.install_pack import run_install_pack
+        sys.exit(run_install_pack(
+            pack_id=args.pack_id,
+            license_key=args.license_key,
+            list_packs=args.list_packs,
+            force=args.force,
         ))
 
     if args.command == "hook-pretooluse":

@@ -64,3 +64,6 @@ CLAUDE.md
 .mcpregistry_github_token
 .mcpregistry_registry_token
 .hypothesis/
+
+# Server-side infrastructure (deployed separately)
+index.php

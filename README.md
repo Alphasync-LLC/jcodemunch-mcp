@@ -285,6 +285,25 @@ Use jcodemunch-mcp for code lookup whenever available. Prefer symbol search, out
 
 ---
 
+## Starter Packs
+
+Pre-built indexes for popular frameworks and libraries. Skip the initial indexing step — install a pack and start querying immediately.
+
+```bash
+# List available packs
+jcodemunch-mcp install-pack --list
+
+# Install a free pack
+jcodemunch-mcp install-pack fastapi
+
+# Install a licensed pack
+jcodemunch-mcp install-pack express --license YOUR-KEY
+```
+
+Free packs require no license. Licensed packs require a [jCodeMunch license](https://j.gravelle.us/jCodeMunch/#pricing). Use `--force` to re-download an already-installed pack.
+
+---
+
 ## Configuration
 
 Settings are controlled by a JSONC config file (`config.jsonc`) with env var fallbacks for backward compatibility. Defaults are chosen so that a fresh install works without any configuration.
