@@ -217,6 +217,10 @@ So when the agent wants a symbol, jCodeMunch can fetch the exact source directly
 
 ## Start fast
 
+> **Ubuntu 24.04+ / Debian 12+:** System Python is externally managed (PEP 668).
+> Use `pipx install jcodemunch-mcp` or `uv tool install jcodemunch-mcp` instead
+> of bare `pip install`.
+
 ### Option A: One command (recommended)
 
 ```bash
