@@ -2,6 +2,11 @@
 
 All notable changes to jcodemunch-mcp are documented here.
 
+## [1.47.0] — 2026-04-15
+
+### Added
+- **Signal Chain Discovery** — new `get_signal_chains` tool traces how external signals (HTTP requests, CLI commands, scheduled tasks, events) propagate through the codebase via the call graph. Each chain starts at a **gateway** (route handler, CLI command, task decorator, event listener, main entry point) and follows BFS callees to leaf symbols. Two modes: **discovery** (omit `symbol` — maps all chains, reports orphan symbols not on any chain) and **lookup** (pass a `symbol` — returns which user-facing chains it participates in, e.g. "validate_email sits on POST /api/users and cli:import-users"). Detects gateways from Flask/FastAPI/Spring/NestJS/ASP.NET route decorators, @click/@app.command CLI, @celery/@dramatiq task queues, event handlers, and standard entry points. Filter by `kind` (http/cli/event/task/main/test). Reuses existing AST-resolved call graph infrastructure for 70+ language support.
+
 ## [1.46.0] — 2026-04-15
 
 ### Added
