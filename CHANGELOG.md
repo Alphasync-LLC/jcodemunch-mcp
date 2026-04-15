@@ -2,6 +2,11 @@
 
 All notable changes to jcodemunch-mcp are documented here.
 
+## [1.44.1] — 2026-04-14
+
+### Fixed
+- `claude-md` (and Cursor/Windsurf rule generators) now respects `tool_profile` and `disabled_tools` — only emits tools the model can actually call (#242).
+
 ## [1.44.0] — 2026-04-14
 
 ### Added
