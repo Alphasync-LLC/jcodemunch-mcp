@@ -21,7 +21,7 @@ async def test_server_lists_all_tools():
     try:
         tools = await list_tools()
 
-        assert len(tools) == 54
+        assert len(tools) == 55
 
         names = {t.name for t in tools}
         expected = {
@@ -42,6 +42,7 @@ async def test_server_lists_all_tools():
             "get_symbol_complexity", "get_churn_rate", "get_hotspots", "get_repo_health",
             "audit_agent_config", "get_untested_symbols",
             "get_tectonic_map", "get_signal_chains", "render_diagram",
+            "get_project_intel",
         }
         assert names == expected
         assert "test_summarizer" not in names  # disabled by default in DEFAULTS
@@ -660,8 +661,8 @@ async def test_disabled_tools_filtered_from_schema(monkeypatch):
         assert "index_repo" not in tool_names
         assert "search_columns" not in tool_names
         assert "get_file_tree" in tool_names  # Not disabled
-        # 54 default tools + test_summarizer (config cleared) - 2 disabled = 53
-        assert len(tools) == 53
+        # 55 default tools + test_summarizer (config cleared) - 2 disabled = 54
+        assert len(tools) == 54
     finally:
         config_module._GLOBAL_CONFIG.clear()
         config_module._GLOBAL_CONFIG.update(orig_config)
@@ -669,7 +670,7 @@ async def test_disabled_tools_filtered_from_schema(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_disabled_tools_empty_all_tools_present(monkeypatch):
-    """When disabled_tools is empty, all 55 tools are present."""
+    """When disabled_tools is empty, all 56 tools are present."""
     from jcodemunch_mcp import config as config_module
 
     orig_config = config_module._GLOBAL_CONFIG.copy()
@@ -679,7 +680,7 @@ async def test_disabled_tools_empty_all_tools_present(monkeypatch):
         config_module._GLOBAL_CONFIG["disabled_tools"] = []
 
         tools = await list_tools()
-        assert len(tools) == 55
+        assert len(tools) == 56
     finally:
         config_module._GLOBAL_CONFIG.clear()
         config_module._GLOBAL_CONFIG.update(orig_config)

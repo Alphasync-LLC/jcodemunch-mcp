@@ -2,6 +2,11 @@
 
 All notable changes to jcodemunch-mcp are documented here.
 
+## [1.49.0] — 2026-04-15
+
+### Added
+- **Project Intelligence** — new `get_project_intel` tool auto-discovers and structurally parses non-code knowledge files (Dockerfiles, docker-compose, GitHub Actions, GitLab CI, CircleCI, K8s manifests, .env templates, Makefiles, package.json scripts, pyproject.toml scripts) and cross-references them to indexed code symbols. Returns structured intelligence grouped into 6 categories: `infra` (Docker stages/services/ports, K8s resources, Terraform from index), `ci` (pipeline jobs/triggers/run commands), `config` (env vars with defaults and comments), `deps` (scripts/targets/entry points), `api` (OpenAPI endpoints, GraphQL types, Protobuf services from index), `data` (dbt/SQLMesh models, column counts, migration files from index). Cross-references link Dockerfile entrypoints to source files, compose build contexts to directories, env var names to code that reads them, CI run commands to test files, and script targets to referenced paths. Every YAML parser has a regex fallback — works with zero optional dependencies. Single `os.walk` pass with 200-file cap, 256KB size guard, and 50-item output caps per category.
+
 ## [1.48.0] — 2026-04-15
 
 ### Added

@@ -62,7 +62,7 @@ _CANONICAL_TOOL_NAMES: tuple[str, ...] = (
     # Architecture
     "get_dependency_cycles", "get_coupling_metrics", "get_layer_violations",
     "get_extraction_candidates", "get_cross_repo_map", "get_tectonic_map", "get_signal_chains",
-    "render_diagram",
+    "render_diagram", "get_project_intel",
     # Quality & Metrics
     "get_symbol_complexity", "get_churn_rate", "get_hotspots",
     "get_repo_health", "get_symbol_importance", "find_dead_code",
@@ -109,7 +109,7 @@ _TOOL_TIER_STANDARD: frozenset[str] = _TOOL_TIER_CORE | frozenset({
     # Architecture
     "get_dependency_cycles", "get_coupling_metrics", "get_layer_violations",
     "get_cross_repo_map", "get_tectonic_map", "get_signal_chains",
-    "render_diagram",
+    "render_diagram", "get_project_intel",
     # Utilities
     "invalidate_cache",
 })
@@ -1963,6 +1963,33 @@ def _build_tools_list() -> list[Tool]:
                 "required": ["source"],
             },
         ),
+        Tool(
+            name="get_project_intel",
+            description=(
+                "Auto-discover and parse non-code knowledge files (Dockerfiles, CI configs, "
+                "docker-compose, K8s manifests, .env templates, Makefiles, package.json scripts) "
+                "and cross-reference them to indexed code symbols. Returns structured intelligence "
+                "grouped by category: infra, ci, config, deps, api, data. "
+                "For categories already in the index (OpenAPI, Terraform, GraphQL, Protobuf, dbt), "
+                "pulls from the index directly. Requires a local index (index_folder)."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "repo": {
+                        "type": "string",
+                        "description": "Repository identifier (owner/repo or display name).",
+                    },
+                    "category": {
+                        "type": "string",
+                        "description": "Category to return: all, infra, ci, config, deps, api, data.",
+                        "default": "all",
+                        "enum": ["all", "infra", "ci", "config", "deps", "api", "data"],
+                    },
+                },
+                "required": ["repo"],
+            },
+        ),
     ]
     # --- Profile filtering ---------------------------------------------------
     profile = config_module.get("tool_profile", "full")
@@ -2969,6 +2996,16 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
                     max_nodes=arguments.get("max_nodes", 80),
                 )
             )
+        elif name == "get_project_intel":
+            from .tools.get_project_intel import get_project_intel
+            result = await asyncio.to_thread(
+                functools.partial(
+                    get_project_intel,
+                    repo=arguments["repo"],
+                    category=arguments.get("category", "all"),
+                    storage_path=storage_path,
+                )
+            )
         else:
             result = {"error": f"Unknown tool: {name}"}
 
@@ -3591,7 +3628,8 @@ def _generate_claude_md_snippet(missing_only: bool = False) -> str:
         ("Architecture", ["get_dependency_cycles", "get_coupling_metrics",
                           "get_layer_violations", "get_extraction_candidates",
                           "get_cross_repo_map", "get_tectonic_map",
-                          "get_signal_chains", "render_diagram"]),
+                          "get_signal_chains", "render_diagram",
+                          "get_project_intel"]),
         ("Quality & Metrics", ["get_symbol_complexity", "get_churn_rate", "get_hotspots",
                                 "get_repo_health", "get_symbol_importance",
                                 "find_dead_code", "get_dead_code_v2",
