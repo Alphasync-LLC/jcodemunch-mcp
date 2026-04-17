@@ -1,9 +1,9 @@
 # jcodemunch-mcp — Project Brief
 
 ## Current State
-- **Version:** 1.52.0 (published to PyPI)
+- **Version:** 1.53.0 (published to PyPI)
 - **INDEX_VERSION:** 9
-- **Tests:** 3248 passed, 9 skipped
+- **Tests:** 3256 passed, 9 skipped
 - **Python:** >=3.10
 
 ## Key Files
@@ -68,6 +68,7 @@ src/jcodemunch_mcp/
     get_repo_health.py        # get_repo_health: one-call triage snapshot (delegate aggregator)
     get_untested_symbols.py   # get_untested_symbols: find functions with no test-file reachability (import graph + name matching)
     search_ast.py             # search_ast: cross-language AST pattern matching; 10 preset anti-patterns + custom mini-DSL (call:, string:, comment:, nesting:, loops:, lines:); enriched with symbol context
+    winnow_symbols.py         # winnow_symbols: multi-axis constraint-chain query; AND-intersects kind/language/name/file/complexity/decorator/calls/summary/churn in one round trip; ranks by importance/complexity/churn/name
     audit_agent_config.py    # audit_agent_config: token waste audit for CLAUDE.md, .cursorrules, etc.; cross-refs against index
 ```
 

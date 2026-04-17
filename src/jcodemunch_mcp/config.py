@@ -1180,6 +1180,7 @@ def generate_template() -> str:
         "suggest_queries",
         "summarize_repo",
         "test_summarizer",
+        "winnow_symbols",
     ])
     tools_str = "\n  // ".join(f'"{t}",' for t in all_tools)
 

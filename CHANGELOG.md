@@ -2,6 +2,11 @@
 
 All notable changes to jcodemunch-mcp are documented here.
 
+## [1.53.0] — 2026-04-17
+
+### Added
+- **Constraint-chain retrieval** — new `winnow_symbols` tool runs a multi-axis query against the index in a single round trip. Accepts an ordered list of `{axis, op, value}` criteria (AND semantics) that intersect signals no existing tool composes: `kind`, `language`, `name` (regex), `file` (glob), `complexity`, `decorator`, `calls` (direct call references), `summary/docstring` text, and git `churn` (with configurable `window_days`). Survivors are ranked by PageRank-based `importance` (default), `complexity`, `churn`, or `name`. Replaces the common 4–5-call pattern of intersecting `search_symbols` + `get_hotspots` + `get_untested_symbols` + `find_references` client-side — e.g. "complex functions that call `db.Exec` and churned recently" resolves in one call. Reports `matched`, `total_scanned`, and `supported_axes` alongside ranked results.
+
 ## [1.52.1] — 2026-04-16
 
 ### Changed

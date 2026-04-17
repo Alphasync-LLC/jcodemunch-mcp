@@ -73,6 +73,8 @@ _CANONICAL_TOOL_NAMES: tuple[str, ...] = (
     # Utilities
     "get_session_stats", "get_session_context", "get_session_snapshot", "plan_turn", "register_edit", "invalidate_cache", "test_summarizer",
     "audit_agent_config",
+    # Composite retrieval
+    "winnow_symbols",
 )
 
 # --------------------------------------------------------------------------- #
@@ -107,7 +109,7 @@ _TOOL_TIER_STANDARD: frozenset[str] = _TOOL_TIER_CORE | frozenset({
     # Quality & Metrics
     "get_symbol_complexity", "get_churn_rate", "get_hotspots",
     "get_symbol_importance", "find_dead_code", "get_dead_code_v2",
-    "get_untested_symbols", "get_repo_health", "search_ast",
+    "get_untested_symbols", "get_repo_health", "search_ast", "winnow_symbols",
     # Architecture
     "get_dependency_cycles", "get_coupling_metrics", "get_layer_violations",
     "get_cross_repo_map", "get_tectonic_map", "get_signal_chains",
@@ -2113,6 +2115,69 @@ def _build_tools_list() -> list[Tool]:
                 "required": ["repo"],
             },
         ),
+        Tool(
+            name="winnow_symbols",
+            description=(
+                "Run a multi-axis constraint query against the index in a single round trip. "
+                "Accepts an ordered list of criteria (AND) intersecting signals no other tool "
+                "composes: kind, language, name (regex), file glob, cyclomatic complexity, "
+                "decorator, direct call references, summary/docstring text, and git churn. "
+                "Survivors are ranked by importance (PageRank, default), complexity, churn, "
+                "or name. Use for questions like 'complex untested functions that call db.Exec' "
+                "or 'deprecated methods still churning in the last 30 days' — cases that would "
+                "otherwise require 4-5 separate calls and client-side merging."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "repo": {
+                        "type": "string",
+                        "description": "Repository identifier (owner/repo or just repo name)",
+                    },
+                    "criteria": {
+                        "type": "array",
+                        "description": (
+                            "Ordered list of filters. Each item is {axis, op, value}. "
+                            "Supported axes: kind (in/eq), language (in/eq), name (eq/matches), "
+                            "file (matches - glob), complexity (>,<,>=,<=,==), decorator (contains), "
+                            "calls (contains - matches call_references), summary (contains), "
+                            "churn (>,<,>=,<=,== with optional window_days, default 90). "
+                            "All criteria must match (AND)."
+                        ),
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "axis": {"type": "string"},
+                                "op": {"type": "string"},
+                                "value": {},
+                                "window_days": {
+                                    "type": "integer",
+                                    "description": "Only used when axis='churn'. Days of git history to scan (default 90).",
+                                },
+                            },
+                            "required": ["axis", "op", "value"],
+                        },
+                    },
+                    "rank_by": {
+                        "type": "string",
+                        "enum": ["importance", "complexity", "churn", "name"],
+                        "default": "importance",
+                        "description": "Ranking axis for survivors.",
+                    },
+                    "order": {
+                        "type": "string",
+                        "enum": ["asc", "desc"],
+                        "default": "desc",
+                    },
+                    "max_results": {
+                        "type": "integer",
+                        "default": 20,
+                        "description": "Hard cap on returned results.",
+                    },
+                },
+                "required": ["repo", "criteria"],
+            },
+        ),
     ]
     # --- Profile filtering ---------------------------------------------------
     profile = config_module.get("tool_profile", "full")
@@ -3173,6 +3238,19 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
                     storage_path=storage_path,
                 )
             )
+        elif name == "winnow_symbols":
+            from .tools.winnow_symbols import winnow_symbols
+            result = await asyncio.to_thread(
+                functools.partial(
+                    winnow_symbols,
+                    repo=arguments["repo"],
+                    criteria=arguments.get("criteria", []),
+                    rank_by=arguments.get("rank_by", "importance"),
+                    order=arguments.get("order", "desc"),
+                    max_results=arguments.get("max_results", 20),
+                    storage_path=storage_path,
+                )
+            )
         else:
             result = {"error": f"Unknown tool: {name}"}
 
@@ -3814,7 +3892,8 @@ def _generate_claude_md_snippet(missing_only: bool = False) -> str:
         ("Quality & Metrics", ["get_symbol_complexity", "get_churn_rate", "get_hotspots",
                                 "get_repo_health", "get_symbol_importance",
                                 "find_dead_code", "get_dead_code_v2",
-                                "get_untested_symbols", "search_ast"]),
+                                "get_untested_symbols", "search_ast",
+                                "winnow_symbols"]),
         ("Diffs & Embeddings", ["get_symbol_diff", "embed_repo"]),
         ("Session-Aware Routing", ["plan_turn", "get_session_context", "get_session_snapshot", "register_edit"]),
         ("Utilities", ["get_session_stats", "invalidate_cache", "test_summarizer",
