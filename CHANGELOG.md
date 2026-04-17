@@ -2,6 +2,12 @@
 
 All notable changes to jcodemunch-mcp are documented here.
 
+## [1.55.0] — 2026-04-17
+
+### Added
+- **MUNCH tier-1 custom encoders (phase 2)** — 15 hand-tuned per-tool compact encoders now ship, replacing the generic fallback for the highest-payoff tools: `get_dependency_graph` (dg1), `get_call_hierarchy` (ch1), `find_references` (fr1), `find_importers` (fi1), `get_blast_radius` (br1), `get_impact_preview` (ip1), `get_signal_chains` (sc1), `get_dependency_cycles` (dc1), `get_tectonic_map` (tm1), `search_symbols` (ss1), `search_text` (st1), `search_ast` (sa1), `get_file_outline` (fo1), `get_repo_outline` (ro1), `get_ranked_context` (rc1). Each encoder declares a schema with column order, type hints, and intern columns; dispatcher picks the custom encoder when available and falls back to the generic shape-sniffer otherwise. Round-trip tested — decoded payload preserves all table contents and scalar fields. Sample `get_dependency_graph` response (8 edges, 6 files) drops from 721 bytes JSON to 490 bytes compact (32% savings); larger responses climb toward 50-70% as legend interning amortizes.
+- **Schema-driven encoder helper** (`encoding/schema_driven.py`) lets future per-tool encoders be written in ~30 lines of declarative config: `TableSpec` + scalar/nested-dict/meta/json-blob declarations, then two one-line `encode`/`decode` wrappers.
+
 ## [1.54.0] — 2026-04-17
 
 ### Added
