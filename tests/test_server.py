@@ -1211,3 +1211,30 @@ def test_upgrade_config_adds_adaptive_tiering(tmp_path):
     old.write_text('{"tool_profile": "full"}\n', encoding="utf-8")
     upgrade_config(old)
     assert "adaptive_tiering" in old.read_text(encoding="utf-8")
+
+
+@pytest.mark.asyncio
+async def test_tool_tier_bundles_config_override():
+    """Editing tool_tier_bundles.core in config must change tools/list output."""
+    import jcodemunch_mcp.config as config_module
+    from copy import deepcopy
+
+    orig_config = config_module._GLOBAL_CONFIG.copy()
+    config_module._GLOBAL_CONFIG.clear()
+    config_module._GLOBAL_CONFIG.update(deepcopy(config_module.DEFAULTS))
+    config_module._GLOBAL_CONFIG["tool_profile"] = "core"
+    config_module._GLOBAL_CONFIG["disabled_tools"] = []
+    # Override core bundle to only have search_symbols
+    config_module._GLOBAL_CONFIG["tool_tier_bundles"]["core"] = ["search_symbols"]
+
+    try:
+        from jcodemunch_mcp.server import _build_tools_list
+        tools = await list_tools()
+        names = {t.name for t in tools}
+        assert "search_symbols" in names
+        # index_folder was in baked-in core but not in our overridden core.
+        assert "index_folder" not in names
+        assert "get_context_bundle" not in names
+    finally:
+        config_module._GLOBAL_CONFIG.clear()
+        config_module._GLOBAL_CONFIG.update(orig_config)

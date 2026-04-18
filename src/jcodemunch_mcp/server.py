@@ -126,6 +126,44 @@ _PROFILE_TIERS: dict[str, frozenset[str] | None] = {
     "full": None,  # None = no filtering
 }
 
+# --- Runtime session tier state -------------------------------------------- #
+import threading
+
+_session_tier_override: str | None = None
+_session_tier_lock = threading.Lock()
+
+
+def _set_session_tier(tier: str | None) -> None:
+    """Atomically set the session-level tier override. None clears it."""
+    global _session_tier_override
+    with _session_tier_lock:
+        _session_tier_override = tier
+
+
+def _effective_profile() -> str:
+    """Return the active tier, preferring session override over config."""
+    with _session_tier_lock:
+        override = _session_tier_override
+    if override is not None:
+        return override
+    return config_module.get("tool_profile", "full") or "full"
+
+
+def _resolve_tier_bundle(profile: str) -> frozenset[str] | None:
+    """Return the set of tool names allowed for the given profile.
+
+    Reads from config['tool_tier_bundles'] first, falls back to baked-in
+    _TOOL_TIER_CORE / _TOOL_TIER_STANDARD constants if the config key is
+    missing or malformed. 'full' returns None (no filter).
+    """
+    if profile == "full":
+        return None
+    bundles = config_module.get("tool_tier_bundles") or {}
+    if isinstance(bundles, dict) and isinstance(bundles.get(profile), list):
+        return frozenset(bundles[profile])
+    # Fallback to constants.
+    return _PROFILE_TIERS.get(profile)
+
 # Parameters stripped from tool schemas when compact_schemas is enabled.
 # These are advanced/rarely-used params that cost tokens every session but
 # are used <5% of the time.  The underlying handler still accepts them.
@@ -2180,8 +2218,8 @@ def _build_tools_list() -> list[Tool]:
         ),
     ]
     # --- Profile filtering ---------------------------------------------------
-    profile = config_module.get("tool_profile", "full")
-    allowed = _PROFILE_TIERS.get(profile)
+    profile = _effective_profile()
+    allowed = _resolve_tier_bundle(profile)
     if allowed is not None:
         tools = [t for t in tools if t.name in allowed]
 
