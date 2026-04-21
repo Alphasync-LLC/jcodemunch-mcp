@@ -279,24 +279,31 @@ def _identity_score(sym: dict, query_joined: str, raw_query: str = "") -> float:
       - ID contains query segment → 20.0
       - No match                  →  0.0
     """
-    # raw_query takes precedence for exact matching (preserves snake_case/camelCase)
-    match_query = raw_query.lower() if raw_query else query_joined
-    if not match_query:
+    raw_lower = raw_query.lower() if raw_query else ""
+    if not raw_lower and not query_joined:
         return 0.0
     name_lower = sym.get("name", "").lower()
     sym_id_lower = sym.get("id", "").lower()
 
-    # Exact match on name or ID (prefer raw_query if provided)
-    if match_query == name_lower or match_query == sym_id_lower:
+    # Raw query preserves snake_case/camelCase for exact matches.
+    if raw_lower and (raw_lower == name_lower or raw_lower == sym_id_lower):
+        return 50.0
+
+    # Tokenized fallback preserves previous semantics for callers that only have terms.
+    if query_joined == name_lower or query_joined == sym_id_lower:
         return 50.0
 
     # Prefix match on name (e.g. query "get_sym" matches "get_symbol_source")
-    if name_lower.startswith(match_query):
+    if query_joined and name_lower.startswith(query_joined):
+        return 30.0
+    if raw_lower and name_lower.startswith(raw_lower):
         return 30.0
 
     # Qualified ID segment match (e.g. query "storage.indexstore" matches
     # "src/storage/index_store.py::IndexStore")
-    if match_query in sym_id_lower:
+    if query_joined and query_joined in sym_id_lower:
+        return 20.0
+    if raw_lower and raw_lower in sym_id_lower:
         return 20.0
 
     return 0.0

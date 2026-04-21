@@ -191,6 +191,14 @@ class TestIdentityChannel:
         sym = {"name": "ProcessData", "id": "src/utils.py::ProcessData"}
         assert _identity_score(sym, "processdata") == 50.0
 
+    def test_raw_query_exact_snake_case_match(self):
+        sym = {"name": "build_ui", "id": "src/ui.py::build_ui"}
+        assert _identity_score(sym, "build ui", raw_query="build_ui") == 50.0
+
+    def test_raw_query_exact_camel_case_match(self):
+        sym = {"name": "ProcessData", "id": "src/utils.py::ProcessData"}
+        assert _identity_score(sym, "process data", raw_query="ProcessData") == 50.0
+
     def test_exact_beats_prefix(self):
         """Exact match (50) must score higher than prefix match (30)."""
         sym = {"name": "get_symbol", "id": "src/tools.py::get_symbol"}
@@ -236,6 +244,20 @@ class TestIdentityChannel:
         breakdown = _bm25_breakdown(sym, ["unrelated"], idf, avgdl)
         assert breakdown["identity"] == 0.0
         assert breakdown["identity_type"] == "none"
+
+    def test_breakdown_uses_raw_query_for_snake_case_exact_match(self):
+        sym = {
+            "name": "_build_left_pane_cache",
+            "signature": "_build_left_pane_cache()",
+            "summary": "",
+            "docstring": "",
+            "keywords": [],
+        }
+        _sym_tokens(sym)
+        idf, avgdl, _ = _compute_bm25([sym])
+        breakdown = _bm25_breakdown(sym, ["build", "left", "pane", "cache"], idf, avgdl, raw_query="_build_left_pane_cache")
+        assert breakdown["identity"] == 50.0
+        assert breakdown["identity_type"] == "exact"
 
 
 # ---------------------------------------------------------------------------

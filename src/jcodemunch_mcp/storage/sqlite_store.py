@@ -1662,11 +1662,13 @@ class SQLiteIndexStore:
                 try:
                     decorators = json.loads(deco_raw) if deco_raw and deco_raw != "[]" else []
                 except (json.JSONDecodeError, ValueError):
+                    logger.warning("Corrupted decorators JSON for symbol %s", row["name"])
                     decorators = []
                 kw_raw = row["keywords"]
                 try:
                     keywords = json.loads(kw_raw) if kw_raw and kw_raw != "[]" else []
                 except (json.JSONDecodeError, ValueError):
+                    logger.warning("Corrupted keywords JSON for symbol %s", row["name"])
                     keywords = []
                 content_hash = row["content_hash"] or ""
                 ecosystem_context = row["ecosystem_context"] or ""
